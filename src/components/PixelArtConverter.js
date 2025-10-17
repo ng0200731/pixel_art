@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.3.3';
+const VERSION = 'v1.4.3';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -45,6 +45,7 @@ function PixelArtConverter() {
   const [showColorNumbers, setShowColorNumbers] = useState(false);
   const [originalPixelArt, setOriginalPixelArt] = useState(null);
   const [clickedColorInfo, setClickedColorInfo] = useState(null);
+  const [highlightedColor, setHighlightedColor] = useState(null);
   
   // Layout mode: 'small-original' (10:70), 'equal' (40:40), 'large-original' (70:10), 'custom'
   const [layoutMode, setLayoutMode] = useState('equal');
@@ -191,6 +192,12 @@ function PixelArtConverter() {
     return colorSet.size;
   };
 
+  const calculateLightness = (rgbString) => {
+    const rgb = rgbString.match(/\d+/g).map(Number);
+    // Calculate relative luminance
+    return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]);
+  };
+
   const extractPalette = (data, numColors) => {
     // Sample pixels for k-means
     const pixels = [];
@@ -229,10 +236,124 @@ function PixelArtConverter() {
       });
     }
 
-    const palette = centroids.map(c =>
+    let palette = centroids.map(c =>
       `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`
     );
+
+    // Sort palette from lightest to darkest
+    palette.sort((a, b) => calculateLightness(b) - calculateLightness(a));
+
     setColorPalette(palette);
+  };
+
+  const handleSmartCombine = () => {
+    if (colorPalette.length === 0) return;
+
+    // Find similar colors (within 5% difference)
+    const threshold = 255 * 0.05; // 5% of max RGB value
+    const combinedPalette = [];
+    const used = new Set();
+
+    colorPalette.forEach((color, idx) => {
+      if (used.has(idx)) return;
+
+      const rgb1 = color.match(/\d+/g).map(Number);
+      const similar = [color];
+      used.add(idx);
+
+      // Find all similar colors
+      colorPalette.forEach((otherColor, otherIdx) => {
+        if (used.has(otherIdx)) return;
+
+        const rgb2 = otherColor.match(/\d+/g).map(Number);
+        const diff = Math.sqrt(
+          Math.pow(rgb1[0] - rgb2[0], 2) +
+          Math.pow(rgb1[1] - rgb2[1], 2) +
+          Math.pow(rgb1[2] - rgb2[2], 2)
+        );
+
+        if (diff <= threshold * 3) { // Using threshold * 3 for RGB distance
+          similar.push(otherColor);
+          used.add(otherIdx);
+        }
+      });
+
+      // Average similar colors
+      if (similar.length > 1) {
+        const allRgb = similar.map(c => c.match(/\d+/g).map(Number));
+        const avgR = Math.round(allRgb.reduce((sum, rgb) => sum + rgb[0], 0) / allRgb.length);
+        const avgG = Math.round(allRgb.reduce((sum, rgb) => sum + rgb[1], 0) / allRgb.length);
+        const avgB = Math.round(allRgb.reduce((sum, rgb) => sum + rgb[2], 0) / allRgb.length);
+        combinedPalette.push(`rgb(${avgR},${avgG},${avgB})`);
+      } else {
+        combinedPalette.push(color);
+      }
+    });
+
+    // Update palette size if colors were combined
+    if (combinedPalette.length !== colorPalette.length) {
+      setPaletteSize(combinedPalette.length);
+    }
+
+    // Replace colors in the pixel art
+    const workCanvas = workCanvasRef.current;
+    const workCtx = workCanvas.getContext('2d');
+    const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+    const data = imageData.data;
+
+    // Create mapping from old colors to new combined colors
+    const colorMap = new Map();
+    let combinedIdx = 0;
+    const usedForMapping = new Set();
+
+    colorPalette.forEach((color, idx) => {
+      if (usedForMapping.has(idx)) return;
+
+      const rgb1 = color.match(/\d+/g).map(Number);
+      colorMap.set(color, combinedPalette[combinedIdx]);
+      usedForMapping.add(idx);
+
+      // Map similar colors to the same combined color
+      colorPalette.forEach((otherColor, otherIdx) => {
+        if (usedForMapping.has(otherIdx)) return;
+
+        const rgb2 = otherColor.match(/\d+/g).map(Number);
+        const diff = Math.sqrt(
+          Math.pow(rgb1[0] - rgb2[0], 2) +
+          Math.pow(rgb1[1] - rgb2[1], 2) +
+          Math.pow(rgb1[2] - rgb2[2], 2)
+        );
+
+        if (diff <= threshold * 3) {
+          colorMap.set(otherColor, combinedPalette[combinedIdx]);
+          usedForMapping.add(otherIdx);
+        }
+      });
+
+      combinedIdx++;
+    });
+
+    // Replace colors in image
+    for (let i = 0; i < data.length; i += 4) {
+      const oldColor = `rgb(${data[i]},${data[i + 1]},${data[i + 2]})`;
+      const newColor = colorMap.get(oldColor);
+      if (newColor) {
+        const newRgb = newColor.match(/\d+/g).map(Number);
+        data[i] = newRgb[0];
+        data[i + 1] = newRgb[1];
+        data[i + 2] = newRgb[2];
+      }
+    }
+
+    workCtx.putImageData(imageData, 0, 0);
+
+    // Update palette and image
+    setColorPalette(combinedPalette);
+    if (showColorNumbers) {
+      drawColorNumbers();
+    } else {
+      setPixelatedImageSrc(workCanvas.toDataURL());
+    }
   };
 
   const colorDistance = (p1, p2) => {
@@ -642,6 +763,7 @@ function PixelArtConverter() {
       setSelectedPaletteColor(color);
       setColorPickerMode(false);
       setClickedColorInfo(null);
+      clearHighlight();
     } else {
       // Second click: this is the new color to replace with
       const elem = pixelImgRef.current;
@@ -678,28 +800,22 @@ function PixelArtConverter() {
         setPixelatedImageSrc(workCanvas.toDataURL());
       }
       
-      // Reset selection
+      // Reset selection and highlight
       setSelectedPaletteColor(null);
       setColorPickerMode(false);
       setClickedColorInfo(null);
+      setHighlightedColor(null);
     }
   };
 
   const handleResetColors = () => {
-    if (originalPixelArt) {
-      const workCanvas = workCanvasRef.current;
-      const workCtx = workCanvas.getContext('2d');
-      const img = new Image();
-      img.onload = () => {
-        workCtx.clearRect(0, 0, imageWidth, imageHeight);
-        workCtx.drawImage(img, 0, 0);
-        if (showColorNumbers) {
-          drawColorNumbers();
-        } else {
-          setPixelatedImageSrc(workCanvas.toDataURL());
-        }
-      };
-      img.src = originalPixelArt;
+    // Reset by regenerating the pixel art from scratch
+    if (loadedImage && colorPalette.length > 0) {
+      updatePixelArt();
+      // Reset color selection states
+      setSelectedPaletteColor(null);
+      setColorPickerMode(false);
+      setClickedColorInfo(null);
     }
   };
 
@@ -735,8 +851,99 @@ function PixelArtConverter() {
       paletteNumber: paletteIndex
     });
     
+    // Highlight all pixels with this color
+    setHighlightedColor(clickedColor);
+    highlightColorInImage(clickedColor);
+    
     setColorPickerMode(true);
     setSelectedPaletteColor(clickedColor);
+  };
+
+  const highlightColorInImage = (targetColor) => {
+    const workCanvas = workCanvasRef.current;
+    const workCtx = workCanvas.getContext('2d');
+    
+    // Create a temporary canvas to draw highlight overlay
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imageWidth;
+    tempCanvas.height = imageHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // Get current image data
+    const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+    const data = imageData.data;
+    
+    // Parse target color
+    const targetRGB = targetColor.match(/\d+/g).map(Number);
+    const [targetR, targetG, targetB] = targetRGB;
+    
+    // Create highlight overlay
+    tempCtx.drawImage(workCanvas, 0, 0);
+    const overlayData = tempCtx.getImageData(0, 0, imageWidth, imageHeight);
+    const overlayPixels = overlayData.data;
+    
+    // Dim non-matching pixels and add border to matching pixels
+    for (let i = 0; i < overlayPixels.length; i += 4) {
+      const r = overlayPixels[i];
+      const g = overlayPixels[i + 1];
+      const b = overlayPixels[i + 2];
+      
+      if (r === targetR && g === targetG && b === targetB) {
+        // Keep matching pixels bright
+        overlayPixels[i] = r;
+        overlayPixels[i + 1] = g;
+        overlayPixels[i + 2] = b;
+        overlayPixels[i + 3] = 255;
+      } else {
+        // Dim non-matching pixels
+        overlayPixels[i] = r * 0.3;
+        overlayPixels[i + 1] = g * 0.3;
+        overlayPixels[i + 2] = b * 0.3;
+        overlayPixels[i + 3] = 255;
+      }
+    }
+    
+    tempCtx.putImageData(overlayData, 0, 0);
+    
+    // Draw white borders around matching color blocks
+    tempCtx.strokeStyle = '#ffff00'; // Yellow border
+    tempCtx.lineWidth = 2;
+    
+    const numBlocksX = Math.ceil(imageWidth / blockSize);
+    const numBlocksY = Math.ceil(imageHeight / blockSize);
+    
+    for (let by = 0; by < numBlocksY; by++) {
+      for (let bx = 0; bx < numBlocksX; bx++) {
+        const startX = bx * blockSize;
+        const startY = by * blockSize;
+        const endX = Math.min(startX + blockSize, imageWidth);
+        const endY = Math.min(startY + blockSize, imageHeight);
+        
+        // Check if this block has the target color
+        const centerX = Math.floor((startX + endX) / 2);
+        const centerY = Math.floor((startY + endY) / 2);
+        const idx = (centerY * imageWidth + centerX) * 4;
+        
+        if (data[idx] === targetR && data[idx + 1] === targetG && data[idx + 2] === targetB) {
+          // Draw yellow border around this block
+          tempCtx.strokeRect(startX, startY, endX - startX, endY - startY);
+        }
+      }
+    }
+    
+    setPixelatedImageSrc(tempCanvas.toDataURL());
+  };
+
+  const clearHighlight = () => {
+    if (highlightedColor) {
+      setHighlightedColor(null);
+      const workCanvas = workCanvasRef.current;
+      if (showColorNumbers) {
+        drawColorNumbers();
+      } else {
+        setPixelatedImageSrc(workCanvas.toDataURL());
+      }
+    }
   };
 
   return (
@@ -867,6 +1074,18 @@ function PixelArtConverter() {
 
         {/* RIGHT SIDEBAR - Controls (20%) */}
         <div className="controls-sidebar">
+          <div className="button-group-sidebar">
+            <button className="downloadBtn" onClick={handleDownload} disabled={!loadedImage}>
+              💾 Download
+            </button>
+            <button className="resetColorsBtn" onClick={handleResetColors} disabled={!loadedImage}>
+              🎨 Reset Colors
+            </button>
+            <button className="resetBtn" onClick={handleReset} disabled={!loadedImage}>
+              🔄 New Image
+            </button>
+          </div>
+
           {showComparison && (
             <>
               <div className="info-box-sidebar">
@@ -874,7 +1093,7 @@ function PixelArtConverter() {
                 <div className="info-text">{imageInfo}</div>
               </div>
 
-          <div className="controls">
+              <div className="controls">
             <div className="control-group">
               <label>Block Size: <span>{blockSize}</span>px</label>
               <input
@@ -970,10 +1189,10 @@ function PixelArtConverter() {
                   ↷ 90° CW
                 </button>
               </div>
+              </div>
             </div>
-          </div>
 
-          <div className="palette">
+            <div className="palette">
             <div className="palette-header">
               <div className="palette-title">
                 Color Palette (extracted from image)
@@ -985,39 +1204,59 @@ function PixelArtConverter() {
                 <div className="original-colors">
                   Original Image Colors: <strong>{uniqueColorCount.toLocaleString()}</strong>
                 </div>
-                <div className="palette-controls">
-                  <button 
-                    className="palette-btn"
-                    onClick={() => setPaletteSize(prev => Math.max(4, prev - 2))}
-                    disabled={paletteSize <= 4}
-                  >
-                    −
-                  </button>
-                  <span className="palette-count">{paletteSize} colors</span>
-                  <button 
-                    className="palette-btn"
-                    onClick={() => setPaletteSize(prev => Math.min(32, prev + 2))}
-                    disabled={paletteSize >= 32}
-                  >
-                    +
-                  </button>
-                </div>
+              <div className="palette-controls">
+                <button 
+                  className="palette-btn"
+                  onClick={() => setPaletteSize(prev => Math.max(4, prev - 2))}
+                  disabled={paletteSize <= 4}
+                >
+                  −
+                </button>
+                <span className="palette-count">{paletteSize} colors</span>
+                <button 
+                  className="palette-btn"
+                  onClick={() => setPaletteSize(prev => Math.min(32, prev + 2))}
+                  disabled={paletteSize >= 32}
+                >
+                  +
+                </button>
+              </div>
+              <button 
+                className="smart-combine-btn"
+                onClick={handleSmartCombine}
+                disabled={colorPalette.length === 0}
+                title="Combine similar colors (within 5% difference)"
+              >
+                🧠 Smart Combine
+              </button>
               </div>
             </div>
-            <div className="palette-swatches">
+              <div className="palette-swatches">
               {colorPalette.map((color, idx) => (
                 <div
                   key={idx}
-                  className={`color-swatch ${colorPickerMode ? 'replacement-mode' : ''} ${selectedPaletteColor === color && colorPickerMode ? 'highlighted' : ''}`}
+                  className={`color-swatch ${colorPickerMode ? 'replacement-mode' : ''} ${selectedPaletteColor === color && colorPickerMode ? 'highlighted' : ''} ${highlightedColor === color ? 'color-highlighted' : ''}`}
                   style={{ backgroundColor: color }}
                   title={color}
-                  onClick={() => handlePaletteColorClick(color)}
+                  onClick={() => {
+                    if (highlightedColor === color) {
+                      // Toggle off highlight
+                      clearHighlight();
+                    } else {
+                      // Highlight this color
+                      setHighlightedColor(color);
+                      highlightColorInImage(color);
+                    }
+                    if (colorPickerMode) {
+                      handlePaletteColorClick(color);
+                    }
+                  }}
                 >
                   <span className="color-number">{idx + 1}</span>
                 </div>
               ))}
-            </div>
-            {clickedColorInfo && (
+              </div>
+              {clickedColorInfo && (
               <div className="clicked-color-display">
                 <div className="clicked-color-label">Clicked Color:</div>
                 <div className="clicked-color-details">
@@ -1031,8 +1270,8 @@ function PixelArtConverter() {
                   </div>
                 </div>
               </div>
-            )}
-            {selectedPaletteColor && (
+              )}
+              {selectedPaletteColor && (
               <div className="color-selection-status">
                 <div className="status-row">
                   {colorPickerMode ? (
@@ -1061,20 +1300,8 @@ function PixelArtConverter() {
                   </button>
                 </div>
               </div>
-            )}
-          </div>
-
-              <div className="button-group-sidebar">
-                <button className="downloadBtn" onClick={handleDownload}>
-                  💾 Download
-                </button>
-                <button className="resetColorsBtn" onClick={handleResetColors}>
-                  🎨 Reset Colors
-                </button>
-                <button className="resetBtn" onClick={handleReset}>
-                  🔄 New Image
-                </button>
-              </div>
+              )}
+            </div>
             </>
           )}
         </div>

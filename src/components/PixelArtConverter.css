@@ -558,6 +558,32 @@
   font-size: 0.85em;
 }
 
+.smart-combine-btn {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 0.85em;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+  width: 100%;
+}
+
+.smart-combine-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.6);
+}
+
+.smart-combine-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .palette-swatches {
   display: flex;
   justify-content: center;
@@ -626,6 +652,23 @@
   box-shadow: 0 0 20px rgba(255, 0, 0, 0.8), 0 0 40px rgba(255, 0, 0, 0.5);
   animation: none;
   z-index: 10;
+}
+
+.color-swatch.color-highlighted {
+  border: 4px solid #ffff00 !important;
+  transform: scale(1.25);
+  box-shadow: 0 0 20px rgba(255, 255, 0, 0.9), 0 0 40px rgba(255, 255, 0, 0.6);
+  animation: highlightPulse 1.5s ease-in-out infinite;
+  z-index: 10;
+}
+
+@keyframes highlightPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 255, 0, 0.9), 0 0 40px rgba(255, 255, 0, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 255, 0, 1), 0 0 60px rgba(255, 255, 0, 0.8);
+  }
 }
 
 @keyframes glow {
@@ -745,8 +788,19 @@ button:hover {
   color: white;
 }
 
-.resetColorsBtn:hover {
+.resetColorsBtn:hover:not(:disabled) {
   background: #138496;
+}
+
+button:disabled {
+  background: #555;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+button:disabled:hover {
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
 .rotateBtn {
