@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.4.3';
+const VERSION = 'v1.5.0';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -22,6 +22,7 @@ function PixelArtConverter() {
   const [grayscale, setGrayscale] = useState(false);
   const [gridLines, setGridLines] = useState(false);
   const [edges, setEdges] = useState(false);
+  const [useDominantColor, setUseDominantColor] = useState(false);
   
   const workCanvasRef = useRef(null);
   const originalCanvasRef = useRef(null);
@@ -58,7 +59,7 @@ function PixelArtConverter() {
       updatePixelArt();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blockSize, threshold, lineWidth, grayscale, gridLines, edges]);
+  }, [blockSize, threshold, lineWidth, grayscale, gridLines, edges, useDominantColor]);
 
   // Update pixel art when color palette changes
   useEffect(() => {
@@ -393,25 +394,54 @@ function PixelArtConverter() {
         const endX = Math.min(startX + blockSize, imageWidth);
         const endY = Math.min(startY + blockSize, imageHeight);
 
-        // Calculate average color in block
-        let rSum = 0, gSum = 0, bSum = 0, count = 0;
-        for (let y = startY; y < endY; y++) {
-          for (let x = startX; x < endX; x++) {
-            const idx = (y * imageWidth + x) * 4;
-            rSum += data[idx];
-            gSum += data[idx + 1];
-            bSum += data[idx + 2];
-            count++;
+        let nr, ng, nb;
+
+        if (useDominantColor) {
+          // OPTION 1: Use dominant (most common) color in block instead of average
+          const colorCounts = new Map();
+          
+          for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x++) {
+              const idx = (y * imageWidth + x) * 4;
+              const colorKey = `${data[idx]},${data[idx + 1]},${data[idx + 2]}`;
+              colorCounts.set(colorKey, (colorCounts.get(colorKey) || 0) + 1);
+            }
           }
+          
+          // Find most common color
+          let maxCount = 0;
+          let dominantColor = [0, 0, 0];
+          colorCounts.forEach((count, colorKey) => {
+            if (count > maxCount) {
+              maxCount = count;
+              dominantColor = colorKey.split(',').map(Number);
+            }
+          });
+          
+          // Find nearest palette color to dominant color
+          const nearest = findNearestPaletteColor(dominantColor);
+          [nr, ng, nb] = nearest;
+        } else {
+          // DEFAULT: Calculate average color in block
+          let rSum = 0, gSum = 0, bSum = 0, count = 0;
+          for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x++) {
+              const idx = (y * imageWidth + x) * 4;
+              rSum += data[idx];
+              gSum += data[idx + 1];
+              bSum += data[idx + 2];
+              count++;
+            }
+          }
+
+          const avgR = rSum / count;
+          const avgG = gSum / count;
+          const avgB = bSum / count;
+
+          // Find nearest palette color
+          const nearest = findNearestPaletteColor([avgR, avgG, avgB]);
+          [nr, ng, nb] = nearest;
         }
-
-        const avgR = rSum / count;
-        const avgG = gSum / count;
-        const avgB = bSum / count;
-
-        // Find nearest palette color
-        const nearest = findNearestPaletteColor([avgR, avgG, avgB]);
-        let [nr, ng, nb] = nearest;
 
         // Apply grayscale if enabled
         if (grayscale) {
@@ -1094,11 +1124,42 @@ function PixelArtConverter() {
               </div>
 
               <div className="controls">
+            <div className="solution-options">
+              <div className="solution-header">🎯 Gray Edge Solutions:</div>
+              
+              <div className="solution-item">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={useDominantColor}
+                    onChange={(e) => setUseDominantColor(e.target.checked)}
+                  />
+                  <span className="solution-label">Option 1: Dominant Color Mode</span>
+                </label>
+                <div className="solution-desc">Use most common color in each block (prevents averaging)</div>
+              </div>
+              
+              <div className="solution-item">
+                <div className="solution-label-static">Option 2: Increase Palette Size</div>
+                <div className="solution-desc">Use + button below to add more colors (8 → 16 → 32)</div>
+              </div>
+              
+              <div className="solution-item">
+                <div className="solution-label-static">Option 3: Smaller Block Size</div>
+                <div className="solution-desc">Reduce block size below to 1-2px for less averaging</div>
+              </div>
+              
+              <div className="solution-item">
+                <div className="solution-label-static">Option 4: Smart Combine Colors</div>
+                <div className="solution-desc">Use 🧠 Smart Combine button to merge unwanted grays</div>
+              </div>
+            </div>
+
             <div className="control-group">
               <label>Block Size: <span>{blockSize}</span>px</label>
               <input
                 type="range"
-                min="2"
+                min="1"
                 max="20"
                 value={blockSize}
                 onChange={(e) => setBlockSize(parseInt(e.target.value))}
