@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.2.1';
+const VERSION = 'v1.3.0';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -44,8 +44,10 @@ function PixelArtConverter() {
   const [originalPixelArt, setOriginalPixelArt] = useState(null);
   const [clickedColorInfo, setClickedColorInfo] = useState(null);
   
-  // Layout mode: 'small-original' (10:70), 'equal' (40:40), 'large-original' (70:10)
+  // Layout mode: 'small-original' (10:70), 'equal' (40:40), 'large-original' (70:10), 'custom'
   const [layoutMode, setLayoutMode] = useState('equal');
+  const [customSplitRatio, setCustomSplitRatio] = useState(0.5); // 0.5 = 50% (equal)
+  const [isDragging, setIsDragging] = useState(false);
 
   // Process image whenever controls change
   useEffect(() => {
@@ -533,6 +535,47 @@ function PixelArtConverter() {
     setShowMagnifier(false);
   };
 
+  const handleDividerMouseDown = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+    setLayoutMode('custom');
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+
+      const container = document.querySelector('.main-layout');
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const totalWidth = rect.width;
+      const sidebarWidth = totalWidth * 0.2; // 20% for sidebar
+      const imageAreaWidth = totalWidth - sidebarWidth;
+      
+      // Calculate ratio (0.1 to 0.9 for 10% to 90%)
+      let ratio = x / imageAreaWidth;
+      ratio = Math.max(0.1, Math.min(0.9, ratio));
+      
+      setCustomSplitRatio(ratio);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
   const handlePaletteColorClick = (color) => {
     if (!colorPickerMode) {
       // First click: select replacement color from palette
@@ -684,7 +727,10 @@ function PixelArtConverter() {
 
       <div className="main-layout">
         {/* LEFT PANEL - Original Image */}
-        <div className={`image-panel original-panel layout-${layoutMode}`}>
+        <div 
+          className={`image-panel original-panel layout-${layoutMode}`}
+          style={layoutMode === 'custom' ? { width: `${customSplitRatio * 80}%` } : {}}
+        >
           <div className="panel-header">
             <h2>Original Image</h2>
           </div>
@@ -715,8 +761,21 @@ function PixelArtConverter() {
           </div>
         </div>
 
+        {/* DRAGGABLE DIVIDER */}
+        <div 
+          className={`panel-divider ${isDragging ? 'dragging' : ''}`}
+          onMouseDown={handleDividerMouseDown}
+        >
+          <div className="divider-handle">
+            <div className="divider-icon">||</div>
+          </div>
+        </div>
+
         {/* MIDDLE PANEL - Pixel Art */}
-        <div className={`image-panel pixel-panel layout-${layoutMode}`}>
+        <div 
+          className={`image-panel pixel-panel layout-${layoutMode}`}
+          style={layoutMode === 'custom' ? { width: `${(1 - customSplitRatio) * 80}%` } : {}}
+        >
           <div className="panel-header">
             <h2>
               Pixel Art Result

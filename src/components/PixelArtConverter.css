@@ -114,35 +114,107 @@
   flex-direction: column;
   overflow: hidden;
   background: #2a2a2a;
-  border-right: 2px solid #444;
   transition: width 0.3s ease;
+}
+
+.image-panel:not(.layout-custom) {
+  /* Only apply transition when not in custom mode (dragging) */
+}
+
+.layout-custom {
+  transition: none !important;
 }
 
 /* Layout: Small Original (10:70:20) */
 .original-panel.layout-small-original {
   width: 10%;
+  border-right: 2px solid #444;
 }
 
 .pixel-panel.layout-small-original {
   width: 70%;
+  border-right: 2px solid #444;
 }
 
 /* Layout: Equal Split (40:40:20) */
 .original-panel.layout-equal {
   width: 40%;
+  border-right: 2px solid #444;
 }
 
 .pixel-panel.layout-equal {
   width: 40%;
+  border-right: 2px solid #444;
 }
 
 /* Layout: Large Original (70:10:20) */
 .original-panel.layout-large-original {
   width: 70%;
+  border-right: 2px solid #444;
 }
 
 .pixel-panel.layout-large-original {
   width: 10%;
+  border-right: 2px solid #444;
+}
+
+/* Custom layout (when dragging) */
+.original-panel.layout-custom {
+  border-right: none;
+}
+
+.pixel-panel.layout-custom {
+  border-right: 2px solid #444;
+}
+
+/* Draggable Divider */
+.panel-divider {
+  width: 8px;
+  background: #444;
+  cursor: col-resize;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.2s;
+  z-index: 10;
+}
+
+.panel-divider:hover {
+  background: #667eea;
+}
+
+.panel-divider.dragging {
+  background: #764ba2;
+  cursor: col-resize;
+}
+
+.divider-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 60px;
+  background: rgba(102, 126, 234, 0.8);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.panel-divider:hover .divider-handle,
+.panel-divider.dragging .divider-handle {
+  opacity: 1;
+}
+
+.divider-icon {
+  color: white;
+  font-weight: bold;
+  font-size: 1em;
+  letter-spacing: -2px;
 }
 
 .panel-header {
