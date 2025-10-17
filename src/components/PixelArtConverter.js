@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.0.4';
+const VERSION = 'v1.1.1';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -40,6 +40,8 @@ function PixelArtConverter() {
   // Color replacement states
   const [selectedPaletteColor, setSelectedPaletteColor] = useState(null);
   const [colorPickerMode, setColorPickerMode] = useState(false);
+  const [showColorNumbers, setShowColorNumbers] = useState(false);
+  const [originalPixelArt, setOriginalPixelArt] = useState(null);
 
   // Process image whenever controls change
   useEffect(() => {
@@ -327,9 +329,94 @@ function PixelArtConverter() {
       }
     }
 
+    // Save original pixel art before any modifications
+    setOriginalPixelArt(workCanvas.toDataURL());
+
     // Update display
     setPixelatedImageSrc(workCanvas.toDataURL());
   };
+
+  const drawColorNumbers = () => {
+    if (!showColorNumbers || colorPalette.length === 0) return;
+
+    const workCanvas = workCanvasRef.current;
+    const workCtx = workCanvas.getContext('2d');
+    
+    // Get current image data
+    const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+    const data = imageData.data;
+
+    // Create a map of color to number
+    const colorToNumber = {};
+    colorPalette.forEach((color, idx) => {
+      colorToNumber[color] = idx + 1;
+    });
+
+    // Create canvas from current pixel art
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imageWidth;
+    tempCanvas.height = imageHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.putImageData(imageData, 0, 0);
+
+    // Set up text style - make numbers bigger and more visible
+    workCtx.drawImage(tempCanvas, 0, 0);
+    const fontSize = Math.max(blockSize * 0.7, 10);
+    workCtx.font = `bold ${fontSize}px Arial`;
+    workCtx.textAlign = 'center';
+    workCtx.textBaseline = 'middle';
+    workCtx.strokeStyle = 'white';
+    workCtx.lineWidth = Math.max(fontSize / 4, 2);
+    workCtx.fillStyle = 'black';
+
+    // Draw numbers on each block
+    const numBlocksX = Math.ceil(imageWidth / blockSize);
+    const numBlocksY = Math.ceil(imageHeight / blockSize);
+
+    for (let by = 0; by < numBlocksY; by++) {
+      for (let bx = 0; bx < numBlocksX; bx++) {
+        const centerX = bx * blockSize + blockSize / 2;
+        const centerY = by * blockSize + blockSize / 2;
+        
+        // Get pixel color at this block
+        const pixelX = Math.min(Math.floor(centerX), imageWidth - 1);
+        const pixelY = Math.min(Math.floor(centerY), imageHeight - 1);
+        const idx = (pixelY * imageWidth + pixelX) * 4;
+        const pixelColor = `rgb(${data[idx]},${data[idx + 1]},${data[idx + 2]})`;
+        
+        // Find matching palette color
+        const colorNum = colorToNumber[pixelColor];
+        if (colorNum) {
+          // Draw white outline
+          workCtx.strokeText(colorNum, centerX, centerY);
+          // Draw black text
+          workCtx.fillText(colorNum, centerX, centerY);
+        }
+      }
+    }
+
+    setPixelatedImageSrc(workCanvas.toDataURL());
+  };
+
+  // Update numbers when toggle changes
+  useEffect(() => {
+    if (loadedImage && colorPalette.length > 0) {
+      if (showColorNumbers) {
+        drawColorNumbers();
+      } else {
+        // Restore without numbers
+        const workCanvas = workCanvasRef.current;
+        const workCtx = workCanvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+          workCtx.drawImage(img, 0, 0);
+          setPixelatedImageSrc(workCanvas.toDataURL());
+        };
+        img.src = pixelatedImageSrc;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showColorNumbers]);
 
   const findNearestPaletteColor = (pixel) => {
     let minDist = Infinity;
@@ -443,32 +530,72 @@ function PixelArtConverter() {
   };
 
   const handlePaletteColorClick = (color) => {
-    setSelectedPaletteColor(color);
-    setColorPickerMode(false);
-  };
-
-  const handlePixelArtClick = (e) => {
-    if (!selectedPaletteColor) {
-      // If no replacement color selected, enter picker mode to pick a color to replace
+    if (!colorPickerMode) {
+      // First click: select replacement color from palette
+      setSelectedPaletteColor(color);
+      setColorPickerMode(false);
+    } else {
+      // Second click: this is the new color to replace with
       const elem = pixelImgRef.current;
       if (!elem) return;
 
-      const rect = elem.getBoundingClientRect();
-      const x = Math.floor((e.clientX - rect.left) / rect.width * imageWidth);
-      const y = Math.floor((e.clientY - rect.top) / rect.height * imageHeight);
-
       const workCanvas = workCanvasRef.current;
       const workCtx = workCanvas.getContext('2d');
-      const imageData = workCtx.getImageData(x, y, 1, 1);
+      const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
       const data = imageData.data;
-      
-      const clickedColor = `rgb(${data[0]},${data[1]},${data[2]})`;
-      setColorPickerMode(true);
-      setSelectedPaletteColor(clickedColor);
-      return;
-    }
 
-    // Replace the clicked color with selected palette color
+      // Parse the old color (the one to replace)
+      const oldRGB = selectedPaletteColor.match(/\d+/g).map(Number);
+      const [targetR, targetG, targetB] = oldRGB;
+
+      // Parse new color (replacement color)
+      const newRGB = color.match(/\d+/g).map(Number);
+      const [newR, newG, newB] = newRGB;
+
+      // Replace all pixels with the target color
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] === targetR && data[i + 1] === targetG && data[i + 2] === targetB) {
+          data[i] = newR;
+          data[i + 1] = newG;
+          data[i + 2] = newB;
+        }
+      }
+
+      workCtx.putImageData(imageData, 0, 0);
+      
+      // If numbers are enabled, redraw them
+      if (showColorNumbers) {
+        drawColorNumbers();
+      } else {
+        setPixelatedImageSrc(workCanvas.toDataURL());
+      }
+      
+      // Reset selection
+      setSelectedPaletteColor(null);
+      setColorPickerMode(false);
+    }
+  };
+
+  const handleResetColors = () => {
+    if (originalPixelArt) {
+      const workCanvas = workCanvasRef.current;
+      const workCtx = workCanvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        workCtx.clearRect(0, 0, imageWidth, imageHeight);
+        workCtx.drawImage(img, 0, 0);
+        if (showColorNumbers) {
+          drawColorNumbers();
+        } else {
+          setPixelatedImageSrc(workCanvas.toDataURL());
+        }
+      };
+      img.src = originalPixelArt;
+    }
+  };
+
+  const handlePixelArtClick = (e) => {
+    // Pick a color from the pixel art to replace
     const elem = pixelImgRef.current;
     if (!elem) return;
 
@@ -478,53 +605,20 @@ function PixelArtConverter() {
 
     const workCanvas = workCanvasRef.current;
     const workCtx = workCanvas.getContext('2d');
-    const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+    const imageData = workCtx.getImageData(x, y, 1, 1);
     const data = imageData.data;
-
-    // Get the color at clicked position
-    const idx = (y * imageWidth + x) * 4;
-    const targetR = data[idx];
-    const targetG = data[idx + 1];
-    const targetB = data[idx + 2];
-
-    // Parse selected palette color
-    const selectedRGB = selectedPaletteColor.match(/\d+/g).map(Number);
-    const [newR, newG, newB] = selectedRGB;
-
-    // Replace all pixels with the target color
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] === targetR && data[i + 1] === targetG && data[i + 2] === targetB) {
-        data[i] = newR;
-        data[i + 1] = newG;
-        data[i + 2] = newB;
-      }
-    }
-
-    workCtx.putImageData(imageData, 0, 0);
-    setPixelatedImageSrc(workCanvas.toDataURL());
     
-    // Reset selection
-    setSelectedPaletteColor(null);
-    setColorPickerMode(false);
+    const clickedColor = `rgb(${data[0]},${data[1]},${data[2]})`;
+    setColorPickerMode(true);
+    setSelectedPaletteColor(clickedColor);
   };
 
   return (
-    <div className="container">
-      <h1>🎨 Pixel Art Converter</h1>
-      <p className="subtitle">Transform images into pixel art - instantly, privately, and free</p>
-      <p className="version">{VERSION}</p>
-
-      <div
-        className={`upload-zone ${isDragOver ? 'dragover' : ''}`}
-        onClick={() => fileInputRef.current.click()}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <div className="upload-icon">📁</div>
-        <div className="upload-text">Drag & Drop your image here</div>
-        <div className="upload-subtext">or click to browse (JPG, PNG, GIF supported)</div>
+    <div className="app-container">
+      <div className="header-bar">
+        <h1>🎨 Pixel Art Converter <span className="version-inline">{VERSION}</span></h1>
       </div>
+      
       <input
         type="file"
         ref={fileInputRef}
@@ -533,48 +627,75 @@ function PixelArtConverter() {
         onChange={handleFileInput}
       />
 
-      {showComparison && (
-        <div className="comparison-section">
-          <div className="info-box">
-            <strong>Image Info:</strong> <span>{imageInfo}</span>
+      <div className="split-view">
+        {/* LEFT PANEL - Original Image */}
+        <div className="panel left-panel">
+          <div className="panel-header">
+            <h2>Original Image</h2>
           </div>
+          <div 
+            className={`image-display-area ${!loadedImage ? 'drop-zone' : ''} ${isDragOver ? 'dragover' : ''}`}
+            onClick={() => !loadedImage && fileInputRef.current.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {!loadedImage ? (
+              <div className="drop-zone-content">
+                <div className="upload-icon">📁</div>
+                <div className="upload-text">Drag & Drop Image Here</div>
+                <div className="upload-subtext">or click to browse</div>
+              </div>
+            ) : (
+              <img 
+                ref={originalImgRef}
+                src={originalImageSrc} 
+                alt="Original"
+                className="full-image"
+                onMouseEnter={handleMouseEnter}
+                onMouseMove={(e) => handleMouseMove(e, originalImgRef)}
+                onMouseLeave={handleMouseLeave}
+              />
+            )}
+          </div>
+        </div>
 
-          <div className="image-container">
-            <div className="image-box">
-              <div className="image-label">Original Image</div>
-              <div className="image-wrapper">
-                <img 
-                  ref={originalImgRef}
-                  src={originalImageSrc} 
-                  alt="Original"
-                  onMouseEnter={handleMouseEnter}
-                  onMouseMove={(e) => handleMouseMove(e, originalImgRef)}
-                  onMouseLeave={handleMouseLeave}
-                />
+        {/* RIGHT PANEL - Pixel Art */}
+        <div className="panel right-panel">
+          <div className="panel-header">
+            <h2>
+              Pixel Art Result
+              {showColorNumbers && (
+                <span className="numbers-active-badge">📊 Numbers Active</span>
+              )}
+            </h2>
+          </div>
+          <div className="image-display-area">
+            {!loadedImage ? (
+              <div className="placeholder-content">
+                <div className="placeholder-icon">🎨</div>
+                <div className="placeholder-text">Pixel art will appear here</div>
               </div>
-            </div>
-            <div className="image-box">
-              <div className="image-label">
-                Pixel Art Result (hover to magnify)
-                {selectedPaletteColor && (
-                  <span className="color-replace-hint">
-                    {colorPickerMode ? ' - Click color to replace' : ' - Click to replace color'}
-                  </span>
-                )}
-              </div>
-              <div className="image-wrapper">
-                <img 
-                  ref={pixelImgRef}
-                  src={pixelatedImageSrc} 
-                  alt="Pixel art" 
-                  className={`pixelated ${selectedPaletteColor ? 'color-picker-active' : ''}`}
-                  onMouseEnter={handleMouseEnter}
-                  onMouseMove={(e) => handleMouseMove(e, pixelImgRef)}
-                  onMouseLeave={handleMouseLeave}
-                  onClick={handlePixelArtClick}
-                />
-              </div>
-            </div>
+            ) : (
+              <img 
+                ref={pixelImgRef}
+                src={pixelatedImageSrc} 
+                alt="Pixel art" 
+                className="full-image pixelated"
+                onMouseEnter={handleMouseEnter}
+                onMouseMove={(e) => handleMouseMove(e, pixelImgRef)}
+                onMouseLeave={handleMouseLeave}
+                onClick={handlePixelArtClick}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showComparison && (
+        <div className="controls-section">
+          <div className="info-box-compact">
+            <strong>Info:</strong> <span>{imageInfo}</span>
           </div>
 
           <div className="controls">
@@ -652,6 +773,17 @@ function PixelArtConverter() {
                 Edge Detection
               </label>
             </div>
+            <div className="control-group color-numbers-control">
+              <label className="checkbox-label-prominent">
+                <input
+                  type="checkbox"
+                  checked={showColorNumbers}
+                  onChange={(e) => setShowColorNumbers(e.target.checked)}
+                />
+                <span className="checkbox-text">Show Color Numbers (1-8)</span>
+              </label>
+              <div className="control-hint">Display numbers on pixel art</div>
+            </div>
             <div className="control-group">
               <label>Rotate Image</label>
               <div style={{ display: 'flex', gap: '5px' }}>
@@ -670,7 +802,7 @@ function PixelArtConverter() {
               <div className="palette-title">
                 Color Palette (extracted from image)
                 <div className="palette-instructions">
-                  Click a palette color below, then click on the pixel art to replace colors
+                  <strong>How to replace colors:</strong> Step 1: Click on pixel art to select color to change. Step 2: Click one of the 8 colors below to replace it with that color.
                 </div>
               </div>
               <div className="palette-info">
@@ -695,54 +827,61 @@ function PixelArtConverter() {
                   </button>
                 </div>
               </div>
-              {selectedPaletteColor && (
-                <div className="color-selection-status">
-                  <div className="status-row">
-                    {colorPickerMode ? (
-                      <>
-                        <span>Color to replace:</span>
-                        <div className="selected-color-box" style={{ backgroundColor: selectedPaletteColor }} />
-                        <span style={{fontSize: '0.85em', color: '#666'}}>{selectedPaletteColor}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Replacement color:</span>
-                        <div className="selected-color-box" style={{ backgroundColor: selectedPaletteColor }} />
-                        <span style={{fontSize: '0.85em', color: '#666'}}>{selectedPaletteColor}</span>
-                      </>
-                    )}
-                    <button 
-                      className="cancel-selection-btn"
-                      onClick={() => {
-                        setSelectedPaletteColor(null);
-                        setColorPickerMode(false);
-                      }}
-                    >
-                      ✕ Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
             <div className="palette-swatches">
               {colorPalette.map((color, idx) => (
                 <div
                   key={idx}
-                  className={`color-swatch ${selectedPaletteColor === color && !colorPickerMode ? 'selected' : ''}`}
+                  className={`color-swatch ${colorPickerMode ? 'replacement-mode' : ''}`}
                   style={{ backgroundColor: color }}
                   title={color}
                   onClick={() => handlePaletteColorClick(color)}
-                />
+                >
+                  <span className="color-number">{idx + 1}</span>
+                </div>
               ))}
             </div>
+            {selectedPaletteColor && (
+              <div className="color-selection-status">
+                <div className="status-row">
+                  {colorPickerMode ? (
+                    <>
+                      <span style={{fontSize: '1em', fontWeight: 'bold'}}>✓ Step 1 Done! Selected color to replace:</span>
+                      <div className="selected-color-box" style={{ backgroundColor: selectedPaletteColor }} />
+                      <span style={{fontSize: '0.85em', color: '#666'}}>{selectedPaletteColor}</span>
+                      <span style={{fontSize: '1em', color: '#007bff', marginLeft: '8px', fontWeight: 'bold'}}>→ Now click any color below (8 colors are flashing)</span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{fontSize: '1em', fontWeight: 'bold'}}>Replacement color ready:</span>
+                      <div className="selected-color-box" style={{ backgroundColor: selectedPaletteColor }} />
+                      <span style={{fontSize: '0.85em', color: '#666'}}>{selectedPaletteColor}</span>
+                      <span style={{fontSize: '1em', color: '#007bff', marginLeft: '8px', fontWeight: 'bold'}}>→ Now click anywhere on the pixel art image to select which color to replace</span>
+                    </>
+                  )}
+                  <button 
+                    className="cancel-selection-btn"
+                    onClick={() => {
+                      setSelectedPaletteColor(null);
+                      setColorPickerMode(false);
+                    }}
+                  >
+                    ✕ Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="button-group">
+          <div className="button-group-compact">
             <button className="downloadBtn" onClick={handleDownload}>
-              💾 Download Pixel Art
+              💾 Download
+            </button>
+            <button className="resetColorsBtn" onClick={handleResetColors}>
+              🎨 Reset Colors
             </button>
             <button className="resetBtn" onClick={handleReset}>
-              🔄 Upload New Image
+              🔄 New Image
             </button>
           </div>
         </div>
@@ -752,38 +891,68 @@ function PixelArtConverter() {
       <canvas ref={originalCanvasRef} style={{ display: 'none' }} />
 
       {/* Magnifying Glass */}
-      {showMagnifier && (
-        <div
-          className="magnifier"
-          style={{
-            left: `${magnifierPos.x}px`,
-            top: `${magnifierPos.y}px`,
-          }}
-        >
-          <div className="magnifier-section">
-            <div className="magnifier-title">Original</div>
-            <div
-              className="magnifier-view"
-              style={{
-                backgroundImage: `url(${originalImageSrc})`,
-                backgroundPosition: `-${magnifierImagePos.x * 3 - 75}px -${magnifierImagePos.y * 3 - 75}px`,
-                backgroundSize: `${imageWidth * 3}px ${imageHeight * 3}px`,
-              }}
-            />
+      {showMagnifier && (() => {
+        const magnifierWidth = 630; // 2 sections * 300px + gap + borders
+        const magnifierHeight = 340; // 300px + title + borders
+        const offset = 25;
+        
+        // Calculate position, keeping magnifier on screen
+        let left = magnifierPos.x + offset;
+        let top = magnifierPos.y + offset;
+        
+        // Check if magnifier goes off right edge
+        if (left + magnifierWidth > window.innerWidth) {
+          left = magnifierPos.x - magnifierWidth - offset;
+        }
+        
+        // Check if magnifier goes off bottom edge
+        if (top + magnifierHeight > window.innerHeight) {
+          top = magnifierPos.y - magnifierHeight - offset;
+        }
+        
+        // If still off screen (left or top), center it
+        if (left < 0 || top < 0) {
+          left = (window.innerWidth - magnifierWidth) / 2;
+          top = (window.innerHeight - magnifierHeight) / 2;
+        }
+        
+        return (
+          <div
+            className="magnifier"
+            style={{
+              left: `${left}px`,
+              top: `${top}px`,
+            }}
+          >
+            <div className="magnifier-section">
+              <div className="magnifier-title">Original</div>
+              <div
+                className="magnifier-view"
+                style={{
+                  backgroundImage: `url(${originalImageSrc})`,
+                  backgroundPosition: `-${magnifierImagePos.x * 4 - 150}px -${magnifierImagePos.y * 4 - 150}px`,
+                  backgroundSize: `${imageWidth * 4}px ${imageHeight * 4}px`,
+                }}
+              >
+                <div className="magnifier-crosshair" />
+              </div>
+            </div>
+            <div className="magnifier-section">
+              <div className="magnifier-title">Pixel Art</div>
+              <div
+                className="magnifier-view pixelated"
+                style={{
+                  backgroundImage: `url(${pixelatedImageSrc})`,
+                  backgroundPosition: `-${magnifierImagePos.x * 4 - 150}px -${magnifierImagePos.y * 4 - 150}px`,
+                  backgroundSize: `${imageWidth * 4}px ${imageHeight * 4}px`,
+                }}
+              >
+                <div className="magnifier-crosshair" />
+              </div>
+            </div>
           </div>
-          <div className="magnifier-section">
-            <div className="magnifier-title">Pixel Art</div>
-            <div
-              className="magnifier-view pixelated"
-              style={{
-                backgroundImage: `url(${pixelatedImageSrc})`,
-                backgroundPosition: `-${magnifierImagePos.x * 3 - 75}px -${magnifierImagePos.y * 3 - 75}px`,
-                backgroundSize: `${imageWidth * 3}px ${imageHeight * 3}px`,
-              }}
-            />
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
