@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.3.1';
+const VERSION = 'v1.3.3';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -34,6 +34,8 @@ function PixelArtConverter() {
   const [showMagnifier, setShowMagnifier] = useState(false);
   const [magnifierPos, setMagnifierPos] = useState({ x: 0, y: 0 });
   const [magnifierImagePos, setMagnifierImagePos] = useState({ x: 0, y: 0 });
+  const [hoverColorOriginal, setHoverColorOriginal] = useState('');
+  const [hoverColorPixel, setHoverColorPixel] = useState('');
   const pixelImgRef = useRef(null);
   const originalImgRef = useRef(null);
   
@@ -525,6 +527,48 @@ function PixelArtConverter() {
 
     setMagnifierPos({ x: e.clientX, y: e.clientY });
     setMagnifierImagePos({ x: imgX, y: imgY });
+
+    // Get color from original image and find palette match
+    const originalCanvas = originalCanvasRef.current;
+    if (originalCanvas && colorPalette.length > 0) {
+      const originalCtx = originalCanvas.getContext('2d');
+      const px = Math.floor(imgX);
+      const py = Math.floor(imgY);
+      if (px >= 0 && px < imageWidth && py >= 0 && py < imageHeight) {
+        const imageData = originalCtx.getImageData(px, py, 1, 1);
+        const data = imageData.data;
+        const rgbColor = `rgb(${data[0]},${data[1]},${data[2]})`;
+        
+        // Find matching palette number
+        const paletteIndex = colorPalette.findIndex(color => color === rgbColor);
+        if (paletteIndex !== -1) {
+          setHoverColorOriginal(`(${paletteIndex + 1})`);
+        } else {
+          setHoverColorOriginal('');
+        }
+      }
+    }
+
+    // Get color from pixel art and find palette match
+    const workCanvas = workCanvasRef.current;
+    if (workCanvas && colorPalette.length > 0) {
+      const workCtx = workCanvas.getContext('2d');
+      const px = Math.floor(imgX);
+      const py = Math.floor(imgY);
+      if (px >= 0 && px < imageWidth && py >= 0 && py < imageHeight) {
+        const imageData = workCtx.getImageData(px, py, 1, 1);
+        const data = imageData.data;
+        const rgbColor = `rgb(${data[0]},${data[1]},${data[2]})`;
+        
+        // Find matching palette number
+        const paletteIndex = colorPalette.findIndex(color => color === rgbColor);
+        if (paletteIndex !== -1) {
+          setHoverColorPixel(`(${paletteIndex + 1})`);
+        } else {
+          setHoverColorPixel('');
+        }
+      }
+    }
 
     // Update custom crosshair position
     const crosshair = document.querySelector('.custom-crosshair');
@@ -1077,7 +1121,10 @@ function PixelArtConverter() {
             }}
           >
             <div className="magnifier-section">
-              <div className="magnifier-title">Original</div>
+              <div className="magnifier-title">
+                Original
+                <span className="magnifier-color-code">{hoverColorOriginal}</span>
+              </div>
               <div
                 className="magnifier-view"
                 style={{
@@ -1090,7 +1137,10 @@ function PixelArtConverter() {
               </div>
             </div>
             <div className="magnifier-section">
-              <div className="magnifier-title">Pixel Art</div>
+              <div className="magnifier-title">
+                Pixel Art
+                <span className="magnifier-color-code">{hoverColorPixel}</span>
+              </div>
               <div
                 className="magnifier-view pixelated"
                 style={{
