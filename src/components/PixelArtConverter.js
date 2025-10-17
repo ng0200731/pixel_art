@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.1.1';
+const VERSION = 'v1.2.0';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -42,6 +42,7 @@ function PixelArtConverter() {
   const [colorPickerMode, setColorPickerMode] = useState(false);
   const [showColorNumbers, setShowColorNumbers] = useState(false);
   const [originalPixelArt, setOriginalPixelArt] = useState(null);
+  const [clickedColorInfo, setClickedColorInfo] = useState(null);
 
   // Process image whenever controls change
   useEffect(() => {
@@ -534,6 +535,7 @@ function PixelArtConverter() {
       // First click: select replacement color from palette
       setSelectedPaletteColor(color);
       setColorPickerMode(false);
+      setClickedColorInfo(null);
     } else {
       // Second click: this is the new color to replace with
       const elem = pixelImgRef.current;
@@ -573,6 +575,7 @@ function PixelArtConverter() {
       // Reset selection
       setSelectedPaletteColor(null);
       setColorPickerMode(false);
+      setClickedColorInfo(null);
     }
   };
 
@@ -609,6 +612,23 @@ function PixelArtConverter() {
     const data = imageData.data;
     
     const clickedColor = `rgb(${data[0]},${data[1]},${data[2]})`;
+    const hexColor = `#${data[0].toString(16).padStart(2, '0')}${data[1].toString(16).padStart(2, '0')}${data[2].toString(16).padStart(2, '0')}`;
+    
+    // Find which palette color this matches
+    let paletteIndex = -1;
+    colorPalette.forEach((color, idx) => {
+      if (color === clickedColor) {
+        paletteIndex = idx + 1;
+      }
+    });
+    
+    // Show color info
+    setClickedColorInfo({
+      rgb: clickedColor,
+      hex: hexColor.toUpperCase(),
+      paletteNumber: paletteIndex
+    });
+    
     setColorPickerMode(true);
     setSelectedPaletteColor(clickedColor);
   };
@@ -627,9 +647,9 @@ function PixelArtConverter() {
         onChange={handleFileInput}
       />
 
-      <div className="split-view">
-        {/* LEFT PANEL - Original Image */}
-        <div className="panel left-panel">
+      <div className="main-layout">
+        {/* LEFT PANEL - Original Image (40%) */}
+        <div className="image-panel original-panel">
           <div className="panel-header">
             <h2>Original Image</h2>
           </div>
@@ -660,13 +680,13 @@ function PixelArtConverter() {
           </div>
         </div>
 
-        {/* RIGHT PANEL - Pixel Art */}
-        <div className="panel right-panel">
+        {/* MIDDLE PANEL - Pixel Art (40%) */}
+        <div className="image-panel pixel-panel">
           <div className="panel-header">
             <h2>
               Pixel Art Result
               {showColorNumbers && (
-                <span className="numbers-active-badge">📊 Numbers Active</span>
+                <span className="numbers-active-badge">📊 Numbers</span>
               )}
             </h2>
           </div>
@@ -690,13 +710,15 @@ function PixelArtConverter() {
             )}
           </div>
         </div>
-      </div>
 
-      {showComparison && (
-        <div className="controls-section">
-          <div className="info-box-compact">
-            <strong>Info:</strong> <span>{imageInfo}</span>
-          </div>
+        {/* RIGHT SIDEBAR - Controls (20%) */}
+        <div className="controls-sidebar">
+          {showComparison && (
+            <>
+              <div className="info-box-sidebar">
+                <strong>Info:</strong>
+                <div className="info-text">{imageInfo}</div>
+              </div>
 
           <div className="controls">
             <div className="control-group">
@@ -832,7 +854,7 @@ function PixelArtConverter() {
               {colorPalette.map((color, idx) => (
                 <div
                   key={idx}
-                  className={`color-swatch ${colorPickerMode ? 'replacement-mode' : ''}`}
+                  className={`color-swatch ${colorPickerMode ? 'replacement-mode' : ''} ${selectedPaletteColor === color && colorPickerMode ? 'highlighted' : ''}`}
                   style={{ backgroundColor: color }}
                   title={color}
                   onClick={() => handlePaletteColorClick(color)}
@@ -841,6 +863,21 @@ function PixelArtConverter() {
                 </div>
               ))}
             </div>
+            {clickedColorInfo && (
+              <div className="clicked-color-display">
+                <div className="clicked-color-label">Clicked Color:</div>
+                <div className="clicked-color-details">
+                  <div className="clicked-color-preview" style={{ backgroundColor: clickedColorInfo.rgb }} />
+                  <div className="clicked-color-codes">
+                    <div className="color-code">{clickedColorInfo.hex}</div>
+                    <div className="color-code">{clickedColorInfo.rgb}</div>
+                    {clickedColorInfo.paletteNumber > 0 && (
+                      <div className="color-palette-match">Palette Color #{clickedColorInfo.paletteNumber}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             {selectedPaletteColor && (
               <div className="color-selection-status">
                 <div className="status-row">
@@ -873,19 +910,21 @@ function PixelArtConverter() {
             )}
           </div>
 
-          <div className="button-group-compact">
-            <button className="downloadBtn" onClick={handleDownload}>
-              💾 Download
-            </button>
-            <button className="resetColorsBtn" onClick={handleResetColors}>
-              🎨 Reset Colors
-            </button>
-            <button className="resetBtn" onClick={handleReset}>
-              🔄 New Image
-            </button>
-          </div>
+              <div className="button-group-sidebar">
+                <button className="downloadBtn" onClick={handleDownload}>
+                  💾 Download
+                </button>
+                <button className="resetColorsBtn" onClick={handleResetColors}>
+                  🎨 Reset Colors
+                </button>
+                <button className="resetBtn" onClick={handleReset}>
+                  🔄 New Image
+                </button>
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       <canvas ref={workCanvasRef} style={{ display: 'none' }} />
       <canvas ref={originalCanvasRef} style={{ display: 'none' }} />
