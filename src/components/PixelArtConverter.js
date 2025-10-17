@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.2.0';
+const VERSION = 'v1.2.1';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -43,6 +43,9 @@ function PixelArtConverter() {
   const [showColorNumbers, setShowColorNumbers] = useState(false);
   const [originalPixelArt, setOriginalPixelArt] = useState(null);
   const [clickedColorInfo, setClickedColorInfo] = useState(null);
+  
+  // Layout mode: 'small-original' (10:70), 'equal' (40:40), 'large-original' (70:10)
+  const [layoutMode, setLayoutMode] = useState('equal');
 
   // Process image whenever controls change
   useEffect(() => {
@@ -637,6 +640,38 @@ function PixelArtConverter() {
     <div className="app-container">
       <div className="header-bar">
         <h1>🎨 Pixel Art Converter <span className="version-inline">{VERSION}</span></h1>
+        <div className="layout-toggle">
+          <button 
+            className={`layout-btn ${layoutMode === 'small-original' ? 'active' : ''}`}
+            onClick={() => setLayoutMode('small-original')}
+            title="Small Original (10%) : Large Pixel Art (70%)"
+          >
+            <span className="layout-icon">
+              <span className="box small">1</span>
+              <span className="box large">2</span>
+            </span>
+          </button>
+          <button 
+            className={`layout-btn ${layoutMode === 'equal' ? 'active' : ''}`}
+            onClick={() => setLayoutMode('equal')}
+            title="Equal Split (40% : 40%)"
+          >
+            <span className="layout-icon">
+              <span className="box medium">1</span>
+              <span className="box medium">2</span>
+            </span>
+          </button>
+          <button 
+            className={`layout-btn ${layoutMode === 'large-original' ? 'active' : ''}`}
+            onClick={() => setLayoutMode('large-original')}
+            title="Large Original (70%) : Small Pixel Art (10%)"
+          >
+            <span className="layout-icon">
+              <span className="box large">1</span>
+              <span className="box small">2</span>
+            </span>
+          </button>
+        </div>
       </div>
       
       <input
@@ -648,8 +683,8 @@ function PixelArtConverter() {
       />
 
       <div className="main-layout">
-        {/* LEFT PANEL - Original Image (40%) */}
-        <div className="image-panel original-panel">
+        {/* LEFT PANEL - Original Image */}
+        <div className={`image-panel original-panel layout-${layoutMode}`}>
           <div className="panel-header">
             <h2>Original Image</h2>
           </div>
@@ -680,8 +715,8 @@ function PixelArtConverter() {
           </div>
         </div>
 
-        {/* MIDDLE PANEL - Pixel Art (40%) */}
-        <div className="image-panel pixel-panel">
+        {/* MIDDLE PANEL - Pixel Art */}
+        <div className={`image-panel pixel-panel layout-${layoutMode}`}>
           <div className="panel-header">
             <h2>
               Pixel Art Result

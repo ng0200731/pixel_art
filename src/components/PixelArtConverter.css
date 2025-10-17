@@ -14,19 +14,91 @@
   padding: 12px 20px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .header-bar h1 {
   color: white;
   font-size: 1.5em;
   margin: 0;
-  text-align: center;
 }
 
 .version-inline {
   font-size: 0.6em;
   opacity: 0.8;
   margin-left: 10px;
+}
+
+/* Layout Toggle Buttons */
+.layout-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.layout-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: none;
+  width: auto;
+}
+
+.layout-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(0);
+}
+
+.layout-btn.active {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: white;
+}
+
+.layout-icon {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+.layout-icon .box {
+  display: inline-block;
+  background: #667eea;
+  color: white;
+  font-weight: bold;
+  font-size: 0.7em;
+  text-align: center;
+  border-radius: 2px;
+  line-height: 1;
+  padding: 2px;
+  min-width: 16px;
+}
+
+.layout-btn.active .layout-icon .box {
+  background: #764ba2;
+}
+
+.layout-icon .box.small {
+  height: 16px;
+  width: 16px;
+  line-height: 16px;
+}
+
+.layout-icon .box.medium {
+  height: 24px;
+  width: 24px;
+  line-height: 24px;
+}
+
+.layout-icon .box.large {
+  height: 32px;
+  width: 32px;
+  line-height: 32px;
 }
 
 /* Main Layout - 40% + 40% + 20% */
@@ -38,20 +110,39 @@
 }
 
 .image-panel {
-  width: 40%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: #2a2a2a;
   border-right: 2px solid #444;
+  transition: width 0.3s ease;
 }
 
-.original-panel {
-  /* First panel - 40% */
+/* Layout: Small Original (10:70:20) */
+.original-panel.layout-small-original {
+  width: 10%;
 }
 
-.pixel-panel {
-  /* Second panel - 40% */
+.pixel-panel.layout-small-original {
+  width: 70%;
+}
+
+/* Layout: Equal Split (40:40:20) */
+.original-panel.layout-equal {
+  width: 40%;
+}
+
+.pixel-panel.layout-equal {
+  width: 40%;
+}
+
+/* Layout: Large Original (70:10:20) */
+.original-panel.layout-large-original {
+  width: 70%;
+}
+
+.pixel-panel.layout-large-original {
+  width: 10%;
 }
 
 .panel-header {
