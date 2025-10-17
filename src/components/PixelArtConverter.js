@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.3.0';
+const VERSION = 'v1.3.1';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -525,14 +525,30 @@ function PixelArtConverter() {
 
     setMagnifierPos({ x: e.clientX, y: e.clientY });
     setMagnifierImagePos({ x: imgX, y: imgY });
+
+    // Update custom crosshair position
+    const crosshair = document.querySelector('.custom-crosshair');
+    if (crosshair) {
+      crosshair.style.left = `${e.clientX}px`;
+      crosshair.style.top = `${e.clientY}px`;
+      crosshair.style.display = 'block';
+    }
   };
 
   const handleMouseEnter = () => {
     setShowMagnifier(true);
+    const crosshair = document.querySelector('.custom-crosshair');
+    if (crosshair) {
+      crosshair.style.display = 'block';
+    }
   };
 
   const handleMouseLeave = () => {
     setShowMagnifier(false);
+    const crosshair = document.querySelector('.custom-crosshair');
+    if (crosshair) {
+      crosshair.style.display = 'none';
+    }
   };
 
   const handleDividerMouseDown = (e) => {
@@ -1022,6 +1038,9 @@ function PixelArtConverter() {
 
       <canvas ref={workCanvasRef} style={{ display: 'none' }} />
       <canvas ref={originalCanvasRef} style={{ display: 'none' }} />
+
+      {/* Custom Red Crosshair */}
+      <div className="custom-crosshair" />
 
       {/* Magnifying Glass */}
       {showMagnifier && (() => {

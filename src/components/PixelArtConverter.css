@@ -290,6 +290,41 @@
   object-fit: contain;
   display: block;
   cursor: crosshair;
+  position: relative;
+}
+
+/* Custom red crosshair - simple sharp + */
+.custom-crosshair {
+  position: fixed;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+  z-index: 9998;
+  display: none;
+  transform: translate(-20px, -20px);
+}
+
+.custom-crosshair::before,
+.custom-crosshair::after {
+  content: '';
+  position: absolute;
+  background: red;
+}
+
+/* Vertical line */
+.custom-crosshair::before {
+  width: 2px;
+  height: 40px;
+  left: 19px;
+  top: 0;
+}
+
+/* Horizontal line */
+.custom-crosshair::after {
+  width: 40px;
+  height: 2px;
+  left: 0;
+  top: 19px;
 }
 
 /* Controls Sidebar - 20% */
