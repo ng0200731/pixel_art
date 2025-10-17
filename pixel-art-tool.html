@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Art Converter - Drag & Drop</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        /* Drag & Drop Zone */
+        .upload-zone {
+            border: 3px dashed #007bff;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 30px;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            background: #e7f3ff;
+            border-color: #0056b3;
+            transform: scale(1.02);
+        }
+        .upload-zone.dragover {
+            background: #cfe2ff;
+        }
+        .upload-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        .upload-text {
+            font-size: 1.2em;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .upload-subtext {
+            color: #666;
+            font-size: 0.9em;
+        }
+        #imageInput { display: none; }
+
+        /* Image Comparison Section */
+        .comparison-section {
+            display: none;
+            margin: 30px 0;
+        }
+        .image-container {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+        .image-box {
+            flex: 1;
+            min-width: 300px;
+            max-width: 500px;
+            text-align: center;
+        }
+        .image-label {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 6px;
+        }
+        .image-wrapper {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background: #fafafa;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .image-wrapper img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            border-radius: 4px;
+        }
+        #pixelatedImg {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .control-group {
+            text-align: center;
+            min-width: 180px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        input[type="range"] {
+            width: 100%;
+            max-width: 180px;
+            cursor: pointer;
+        }
+        input[type="checkbox"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+            margin-right: 5px;
+        }
+        .checkbox-label {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        /* Palette */
+        #palette {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .palette-title {
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .color-swatch {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #999;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .color-swatch:hover {
+            transform: scale(1.15);
+            border-color: #333;
+        }
+
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 12px 30px;
+            font-size: 1em;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        #downloadBtn {
+            background: #28a745;
+            color: white;
+        }
+        #downloadBtn:hover {
+            background: #218838;
+        }
+        #resetBtn {
+            background: #6c757d;
+            color: white;
+        }
+        #resetBtn:hover {
+            background: #5a6268;
+        }
+        .rotateBtn {
+            background: #007bff;
+            color: white;
+        }
+        .rotateBtn:hover {
+            background: #0056b3;
+        }
+
+        /* Hidden elements */
+        #workCanvas, #originalCanvas { display: none; }
+
+        /* Info section */
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .info-box strong {
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Pixel Art Converter</h1>
+        <p class="subtitle">Transform images into pixel art - instantly, privately, and free</p>
+
+        <div class="upload-zone" id="uploadZone">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Drag & Drop your image here</div>
+            <div class="upload-subtext">or click to browse (JPG, PNG, GIF supported)</div>
+        </div>
+        <input type="file" id="imageInput" accept="image/*">
+
+        <div class="comparison-section" id="comparisonSection">
+            <div class="info-box">
+                <strong>Image Info:</strong> <span id="imageInfo">-</span>
+            </div>
+
+            <div class="image-container">
+                <div class="image-box">
+                    <div class="image-label">Original Image</div>
+                    <div class="image-wrapper">
+                        <img id="originalImg" alt="Original image">
+                    </div>
+                </div>
+                <div class="image-box">
+                    <div class="image-label">Pixel Art Result</div>
+                    <div class="image-wrapper">
+                        <img id="pixelatedImg" alt="Pixel art result">
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label>Block Size: <span id="blockVal">7</span>px</label>
+                    <input type="range" id="blockSize" min="2" max="20" value="7">
+                </div>
+                <div class="control-group">
+                    <label>Color Palette: <span id="paletteVal">8</span> colors</label>
+                    <input type="range" id="paletteSize" min="4" max="32" value="8" step="2">
+                </div>
+                <div class="control-group">
+                    <label>Edge Threshold: <span id="threshVal">15</span></label>
+                    <input type="range" id="threshold" min="0" max="100" value="15">
+                </div>
+                <div class="control-group">
+                    <label>Line Width: <span id="lineVal">1</span>px</label>
+                    <input type="range" id="lineWidth" min="0" max="5" value="1">
+                </div>
+                <div class="control-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="grayscale"> Grayscale
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="gridLines"> Grid Lines
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="edges"> Edge Detection
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label>Rotate Image</label>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="rotateBtn" id="rotateLeft" style="padding: 8px 12px; font-size: 0.9em;">↶ 90° CCW</button>
+                        <button class="rotateBtn" id="rotateRight" style="padding: 8px 12px; font-size: 0.9em;">↷ 90° CW</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="palette">
+                <div class="palette-title">Color Palette (extracted from image)</div>
+            </div>
+
+            <div class="button-group">
+                <button id="downloadBtn">💾 Download Pixel Art</button>
+                <button id="resetBtn">🔄 Upload New Image</button>
+            </div>
+        </div>
+
+        <canvas id="workCanvas"></canvas>
+        <canvas id="originalCanvas"></canvas>
+    </div>
+
+    <script>
+        const uploadZone = document.getElementById('uploadZone');
+        const imageInput = document.getElementById('imageInput');
+        const comparisonSection = document.getElementById('comparisonSection');
+        const originalImg = document.getElementById('originalImg');
+        const pixelatedImg = document.getElementById('pixelatedImg');
+        const workCanvas = document.getElementById('workCanvas');
+        const originalCanvas = document.getElementById('originalCanvas');
+        const workCtx = workCanvas.getContext('2d');
+        const originalCtx = originalCanvas.getContext('2d');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const paletteDiv = document.getElementById('palette');
+        const imageInfo = document.getElementById('imageInfo');
+
+        let loadedImage = null;
+        let colorPalette = [];
+        let imageWidth = 0;
+        let imageHeight = 0;
+        let rotationDegrees = 0; // 0, 90, 180, or 270
+
+        // Drag & Drop functionality
+        uploadZone.addEventListener('click', () => imageInput.click());
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type.startsWith('image/')) {
+                handleImageFile(files[0]);
+            }
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleImageFile(e.target.files[0]);
+            }
+        });
+
+        // Event listeners for controls
+        ['blockSize', 'paletteSize', 'threshold', 'lineWidth', 'grayscale', 'gridLines', 'edges'].forEach(id => {
+            const elem = document.getElementById(id);
+            if (elem.type === 'range') {
+                elem.addEventListener('input', () => {
+                    const valId = id.replace('Size', 'Val').replace('Width', 'Val').replace('threshold', 'threshVal').replace('palette', 'palette');
+                    const suffix = id === 'paletteSize' ? ' colors' : (id === 'blockSize' || id === 'lineWidth' ? 'px' : '');
+                    document.getElementById(valId).textContent = elem.value + suffix;
+
+                    if (id === 'paletteSize') {
+                        // Re-extract palette with new color count
+                        if (loadedImage) {
+                            processImage();
+                        }
+                    } else {
+                        updatePixelArt();
+                    }
+                });
+            } else {
+                elem.addEventListener('change', updatePixelArt);
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            comparisonSection.style.display = 'none';
+            loadedImage = null;
+            rotationDegrees = 0;
+            imageInput.value = '';
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `pixel-art-${Date.now()}.png`;
+            link.href = workCanvas.toDataURL('image/png');
+            link.click();
+        });
+
+        // Rotation button event listeners
+        document.getElementById('rotateLeft').addEventListener('click', () => {
+            rotationDegrees = (rotationDegrees - 90 + 360) % 360;
+            processImage();
+        });
+
+        document.getElementById('rotateRight').addEventListener('click', () => {
+            rotationDegrees = (rotationDegrees + 90) % 360;
+            processImage();
+        });
+
+        function handleImageFile(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                loadedImage = new Image();
+                loadedImage.onload = () => {
+                    processImage();
+                };
+                loadedImage.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function processImage() {
+            if (!loadedImage) return;
+
+            // Calculate rotated dimensions
+            const isRotated90or270 = (rotationDegrees === 90 || rotationDegrees === 270);
+            imageWidth = isRotated90or270 ? loadedImage.height : loadedImage.width;
+            imageHeight = isRotated90or270 ? loadedImage.width : loadedImage.height;
+
+            // Set canvas dimensions based on rotation
+            originalCanvas.width = imageWidth;
+            originalCanvas.height = imageHeight;
+
+            // Save context state
+            originalCtx.save();
+
+            // Apply rotation transformation
+            if (rotationDegrees !== 0) {
+                // Translate to center, rotate, then translate back
+                const centerX = imageWidth / 2;
+                const centerY = imageHeight / 2;
+                originalCtx.translate(centerX, centerY);
+                originalCtx.rotate(rotationDegrees * Math.PI / 180);
+                originalCtx.translate(-loadedImage.width / 2, -loadedImage.height / 2);
+            }
+
+            // Draw the image with rotation applied
+            originalCtx.drawImage(loadedImage, 0, 0, loadedImage.width, loadedImage.height);
+
+            // Restore context state
+            originalCtx.restore();
+
+            // Create rotated image for display in original image section
+            const rotatedImageCanvas = document.createElement('canvas');
+            rotatedImageCanvas.width = imageWidth;
+            rotatedImageCanvas.height = imageHeight;
+            const rotatedCtx = rotatedImageCanvas.getContext('2d');
+            rotatedCtx.drawImage(originalCanvas, 0, 0);
+            originalImg.src = rotatedImageCanvas.toDataURL();
+
+            // Count unique colors in the original image
+            const imageData = originalCtx.getImageData(0, 0, imageWidth, imageHeight);
+            const uniqueColorCount = countUniqueColors(imageData.data);
+
+            // Update info
+            imageInfo.textContent = `Original: ${loadedImage.width}x${loadedImage.height}px | Rotated: ${imageWidth}x${imageHeight}px (Rotation: ${rotationDegrees}°) | Unique Colors: ${uniqueColorCount.toLocaleString()} | Pixel Art: ${imageWidth}x${imageHeight}px`;
+
+            // Extract color palette from rotated image
+            const numColors = parseInt(document.getElementById('paletteSize').value);
+            extractPalette(imageData.data, numColors);
+
+            // Generate pixel art
+            updatePixelArt();
+
+            // Show comparison section
+            comparisonSection.style.display = 'block';
+        }
+
+        function countUniqueColors(data) {
+            // Use a Set to track unique RGB color combinations
+            const colorSet = new Set();
+
+            // Iterate through all pixels
+            for (let i = 0; i < data.length; i += 4) {
+                // Create a unique key for each RGB color (ignore alpha channel)
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                const colorKey = `${r},${g},${b}`;
+                colorSet.add(colorKey);
+            }
+
+            return colorSet.size;
+        }
+
+        function extractPalette(data, numColors) {
+            // Sample pixels for k-means (every 5th pixel for better coverage)
+            const pixels = [];
+            for (let i = 0; i < data.length; i += 4 * 5) {
+                pixels.push([data[i], data[i + 1], data[i + 2]]);
+            }
+
+            // K-means clustering
+            let centroids = [];
+            // Initialize with evenly distributed pixels
+            const step = Math.floor(pixels.length / numColors);
+            for (let i = 0; i < numColors; i++) {
+                const idx = Math.min(i * step, pixels.length - 1);
+                centroids.push([...pixels[idx]]);
+            }
+
+            // Run k-means iterations
+            for (let iter = 0; iter < 10; iter++) {
+                const clusters = centroids.map(() => []);
+
+                pixels.forEach(pixel => {
+                    const distances = centroids.map(c => colorDistance(pixel, c));
+                    const minIdx = distances.indexOf(Math.min(...distances));
+                    clusters[minIdx].push(pixel);
+                });
+
+                centroids = clusters.map((cluster, idx) => {
+                    if (cluster.length === 0) return centroids[idx];
+                    const sums = cluster.reduce((acc, p) =>
+                        [acc[0] + p[0], acc[1] + p[1], acc[2] + p[2]], [0, 0, 0]
+                    );
+                    return [
+                        sums[0] / cluster.length,
+                        sums[1] / cluster.length,
+                        sums[2] / cluster.length
+                    ];
+                });
+            }
+
+            colorPalette = centroids.map(c =>
+                `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`
+            );
+            displayPalette();
+        }
+
+        function colorDistance(p1, p2) {
+            // Euclidean distance in RGB space
+            return Math.sqrt(
+                Math.pow(p1[0] - p2[0], 2) +
+                Math.pow(p1[1] - p2[1], 2) +
+                Math.pow(p1[2] - p2[2], 2)
+            );
+        }
+
+        function displayPalette() {
+            // Keep the title and add swatches
+            paletteDiv.innerHTML = '<div class="palette-title">Color Palette (extracted from image)</div>';
+            colorPalette.forEach(color => {
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch';
+                swatch.style.backgroundColor = color;
+                swatch.title = color;
+                paletteDiv.appendChild(swatch);
+            });
+        }
+
+        function updatePixelArt() {
+            if (!loadedImage || colorPalette.length === 0) return;
+
+            const blockSize = parseInt(document.getElementById('blockSize').value);
+            const threshold = parseInt(document.getElementById('threshold').value);
+            const lineWidth = parseInt(document.getElementById('lineWidth').value);
+            const useGrayscale = document.getElementById('grayscale').checked;
+            const showGrid = document.getElementById('gridLines').checked;
+            const showEdges = document.getElementById('edges').checked;
+
+            // Set canvas to match original image size
+            workCanvas.width = imageWidth;
+            workCanvas.height = imageHeight;
+
+            // Draw the original image without smoothing (nearest-neighbor)
+            workCtx.imageSmoothingEnabled = false;
+            workCtx.drawImage(originalCanvas, 0, 0, imageWidth, imageHeight);
+
+            const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+            const data = imageData.data;
+
+            // Apply pixelation by averaging blocks
+            const numBlocksX = Math.ceil(imageWidth / blockSize);
+            const numBlocksY = Math.ceil(imageHeight / blockSize);
+
+            for (let by = 0; by < numBlocksY; by++) {
+                for (let bx = 0; bx < numBlocksX; bx++) {
+                    const startX = bx * blockSize;
+                    const startY = by * blockSize;
+                    const endX = Math.min(startX + blockSize, imageWidth);
+                    const endY = Math.min(startY + blockSize, imageHeight);
+
+                    // Calculate average color in block
+                    let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            const idx = (y * imageWidth + x) * 4;
+                            rSum += data[idx];
+                            gSum += data[idx + 1];
+                            bSum += data[idx + 2];
+                            count++;
+                        }
+                    }
+
+                    const avgR = rSum / count;
+                    const avgG = gSum / count;
+                    const avgB = bSum / count;
+
+                    // Find nearest palette color
+                    const nearest = findNearestPaletteColor([avgR, avgG, avgB]);
+                    let [nr, ng, nb] = nearest;
+
+                    // Apply grayscale if enabled
+                    if (useGrayscale) {
+                        const gray = (nr + ng + nb) / 3;
+                        nr = ng = nb = gray;
+                    }
+
+                    // Fill entire block with the color
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            const idx = (y * imageWidth + x) * 4;
+                            data[idx] = nr;
+                            data[idx + 1] = ng;
+                            data[idx + 2] = nb;
+                        }
+                    }
+                }
+            }
+
+            workCtx.putImageData(imageData, 0, 0);
+
+            // Apply edge detection if enabled
+            if (showEdges) {
+                applyEdgeDetection(threshold);
+            }
+
+            // Draw grid lines if enabled
+            if (showGrid && lineWidth > 0) {
+                workCtx.strokeStyle = '#000000';
+                workCtx.lineWidth = lineWidth;
+
+                for (let x = 0; x <= imageWidth; x += blockSize) {
+                    workCtx.beginPath();
+                    workCtx.moveTo(x, 0);
+                    workCtx.lineTo(x, imageHeight);
+                    workCtx.stroke();
+                }
+
+                for (let y = 0; y <= imageHeight; y += blockSize) {
+                    workCtx.beginPath();
+                    workCtx.moveTo(0, y);
+                    workCtx.lineTo(imageWidth, y);
+                    workCtx.stroke();
+                }
+            }
+
+            // Update display
+            pixelatedImg.src = workCanvas.toDataURL();
+        }
+
+        function findNearestPaletteColor(pixel) {
+            let minDist = Infinity;
+            let nearest = [0, 0, 0];
+
+            colorPalette.forEach(color => {
+                const rgb = color.match(/\d+/g).map(Number);
+                const dist = colorDistance(pixel, rgb);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = rgb;
+                }
+            });
+
+            return nearest;
+        }
+
+        function applyEdgeDetection(threshold) {
+            const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+            const data = imageData.data;
+            const edges = new Uint8ClampedArray(data.length);
+
+            // Sobel edge detection
+            for (let y = 1; y < imageHeight - 1; y++) {
+                for (let x = 1; x < imageWidth - 1; x++) {
+                    const idx = (y * imageWidth + x) * 4;
+
+                    // Get grayscale values of surrounding pixels
+                    const getGray = (dx, dy) => {
+                        const i = ((y + dy) * imageWidth + (x + dx)) * 4;
+                        return (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    };
+
+                    // Sobel kernels
+                    const gx =
+                        -1 * getGray(-1, -1) + 1 * getGray(1, -1) +
+                        -2 * getGray(-1, 0) + 2 * getGray(1, 0) +
+                        -1 * getGray(-1, 1) + 1 * getGray(1, 1);
+
+                    const gy =
+                        -1 * getGray(-1, -1) - 2 * getGray(0, -1) - 1 * getGray(1, -1) +
+                        1 * getGray(-1, 1) + 2 * getGray(0, 1) + 1 * getGray(1, 1);
+
+                    const magnitude = Math.sqrt(gx * gx + gy * gy);
+
+                    if (magnitude > threshold) {
+                        edges[idx] = 0;
+                        edges[idx + 1] = 0;
+                        edges[idx + 2] = 0;
+                        edges[idx + 3] = 255;
+                    } else {
+                        edges[idx] = data[idx];
+                        edges[idx + 1] = data[idx + 1];
+                        edges[idx + 2] = data[idx + 2];
+                        edges[idx + 3] = data[idx + 3];
+                    }
+                }
+            }
+
+            // Copy edges back
+            for (let i = 0; i < data.length; i++) {
+                data[i] = edges[i];
+            }
+
+            workCtx.putImageData(imageData, 0, 0);
+        }
+    </script>
+</body>
+</html>

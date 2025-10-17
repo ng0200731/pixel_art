@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"D:\\project\\pixelart\" /s /b)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
