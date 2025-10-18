@@ -164,6 +164,13 @@ function PixelArtConverter() {
       img.onload = () => {
         setLoadedImage(img);
         setRotationDegrees(0);
+        // Reset all color replacement states for new image
+        setReplacedColors(new Set());
+        setSelectedPaletteColor(null);
+        setColorPickerMode(false);
+        setClickedColorInfo(null);
+        setHighlightedColor(null);
+        setConfirmationMode(false);
       };
       img.src = event.target.result;
     };
@@ -738,6 +745,12 @@ function PixelArtConverter() {
     setShowComparison(false);
     setLoadedImage(null);
     setRotationDegrees(0);
+    setReplacedColors(new Set());
+    setSelectedPaletteColor(null);
+    setColorPickerMode(false);
+    setClickedColorInfo(null);
+    setHighlightedColor(null);
+    setConfirmationMode(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
