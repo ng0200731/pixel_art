@@ -880,23 +880,50 @@ function PixelArtConverter() {
       return; // Can't use a replaced color
     }
 
-    // If clicking same color again, toggle highlight off
-    if (selectedPaletteColor === color && colorPickerMode) {
-      setSelectedPaletteColor(null);
-      setColorPickerMode(false);
-      setHighlightedColor(null);
-      clearHighlight();
-      return;
-    }
+    if (!confirmationMode) {
+      // MODE 1: Checkbox UNCHECKED - Only highlight, no replacement
+      // If clicking same color again, toggle highlight off
+      if (selectedPaletteColor === color) {
+        setSelectedPaletteColor(null);
+        setHighlightedColor(null);
+        clearHighlight();
+        return;
+      }
 
-    // Step 1: User clicks a palette color
-    setSelectedPaletteColor(color);
-    setColorPickerMode(true); // Now waiting for user to click pixel art
-    setClickedColorInfo(null);
-    
-    // Highlight all pixels with this color in the pixel artwork
-    setHighlightedColor(color);
-    highlightColorInImage(color);
+      // Show highlight for this color
+      setSelectedPaletteColor(color);
+      setHighlightedColor(color);
+      highlightColorInImage(color);
+      setColorPickerMode(false); // Not in replacement mode
+    } else {
+      // MODE 2: Checkbox CHECKED - Replacement mode
+      if (!selectedPaletteColor) {
+        // First click: Select the OLD color (to be replaced)
+        setSelectedPaletteColor(color);
+        setColorPickerMode(true);
+        setHighlightedColor(color);
+        highlightColorInImage(color);
+      } else if (selectedPaletteColor === color) {
+        // Clicking same color again - deselect
+        setSelectedPaletteColor(null);
+        setColorPickerMode(false);
+        setHighlightedColor(null);
+        clearHighlight();
+      } else {
+        // Second click: This is the NEW replacement color
+        const oldPaletteNum = colorPalette.findIndex(c => c === selectedPaletteColor) + 1;
+        const newPaletteNum = colorPalette.findIndex(c => c === color) + 1;
+        
+        // Show confirmation popup (1st color LEFT, 2nd color RIGHT)
+        setPendingReplacement({
+          oldColor: selectedPaletteColor,  // 1st color (LEFT - to be replaced)
+          newColor: color,                  // 2nd color (RIGHT - replacement)
+          oldNumber: oldPaletteNum,
+          newNumber: newPaletteNum
+        });
+        setShowConfirmPopup(true);
+      }
+    }
   };
 
   const handleResetColors = () => {
@@ -912,55 +939,14 @@ function PixelArtConverter() {
   };
 
   const handlePixelArtClick = (e) => {
-    // Step 2: User clicks on pixel artwork to choose which color to replace
-    if (!selectedPaletteColor) {
-      // No replacement color selected yet
+    // Only allow clicking pixel art if confirmation mode is OFF
+    // (In confirmation mode, users click palette colors directly)
+    if (confirmationMode || !selectedPaletteColor) {
       return;
     }
-
-    const elem = pixelImgRef.current;
-    if (!elem) return;
-
-    const rect = elem.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) / rect.width * imageWidth);
-    const y = Math.floor((e.clientY - rect.top) / rect.height * imageHeight);
-
-    const workCanvas = workCanvasRef.current;
-    const workCtx = workCanvas.getContext('2d');
-    const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
-    const data = imageData.data;
     
-    // Get the color at clicked position (this is the OLD color to be replaced)
-    const idx = (y * imageWidth + x) * 4;
-    const oldColor = `rgb(${data[idx]},${data[idx + 1]},${data[idx + 2]})`;
-    
-    // Check if this color was already replaced
-    if (replacedColors.has(oldColor)) {
-      return; // Can't replace an already replaced color
-    }
-    
-    // Don't allow replacing with itself
-    if (oldColor === selectedPaletteColor) {
-      return;
-    }
-
-    // Find palette numbers
-    const oldPaletteNum = colorPalette.findIndex(c => c === oldColor) + 1;
-    const newPaletteNum = colorPalette.findIndex(c => c === selectedPaletteColor) + 1;
-
-    if (confirmationMode) {
-      // Show confirmation popup
-      setPendingReplacement({
-        oldColor,
-        newColor: selectedPaletteColor,
-        oldNumber: oldPaletteNum,
-        newNumber: newPaletteNum
-      });
-      setShowConfirmPopup(true);
-    } else {
-      // Direct replacement without confirmation
-      performReplacement(oldColor, selectedPaletteColor);
-    }
+    // In non-confirmation mode, clicking pixel art does nothing
+    // (only highlighting via palette clicks)
   };
 
   const performReplacement = (oldColor, newColor) => {
@@ -1000,13 +986,14 @@ function PixelArtConverter() {
       setPixelatedImageSrc(workCanvas.toDataURL());
     }
     
-    // Reset selection
+    // Reset selection and UNCHECK the confirmation checkbox
     setSelectedPaletteColor(null);
     setColorPickerMode(false);
     setClickedColorInfo(null);
     setHighlightedColor(null);
     setShowConfirmPopup(false);
     setPendingReplacement(null);
+    setConfirmationMode(false); // Auto-uncheck checkbox after replacement
   };
 
   const highlightColorInImage = (targetColor) => {
@@ -1422,26 +1409,7 @@ function PixelArtConverter() {
                   onMouseEnter={() => setHoveredPaletteColor(color)}
                   onMouseLeave={() => setHoveredPaletteColor(null)}
                   onClick={() => {
-                    if (replacedColors.has(color)) {
-                      return; // Can't use replaced colors
-                    }
-                    
-                    if (selectedPaletteColor && color !== selectedPaletteColor && colorPickerMode) {
-                      // User has selected a replacement color and now clicking a different color
-                      const oldPaletteNum = colorPalette.findIndex(c => c === color) + 1;
-                      const newPaletteNum = colorPalette.findIndex(c => c === selectedPaletteColor) + 1;
-                      
-                      // Show confirmation popup
-                      setPendingReplacement({
-                        oldColor: color,
-                        newColor: selectedPaletteColor,
-                        oldNumber: oldPaletteNum,
-                        newNumber: newPaletteNum
-                      });
-                      setShowConfirmPopup(true);
-                    } else {
-                      handlePaletteColorClick(color);
-                    }
+                    handlePaletteColorClick(color);
                   }}
                 >
                   <span className="color-number">{idx + 1}</span>
@@ -1452,18 +1420,32 @@ function PixelArtConverter() {
               ))}
               </div>
               
-              {selectedPaletteColor && colorPickerMode && (
-                <div className="confirmation-toggle">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={confirmationMode}
-                      onChange={(e) => setConfirmationMode(e.target.checked)}
-                    />
-                    <span style={{color: '#fff', fontSize: '0.85em'}}>Ask confirmation before replacing</span>
-                  </label>
-                  <div style={{fontSize: '0.75em', color: '#aaa', marginTop: '4px', fontStyle: 'italic'}}>
-                    Press <kbd>Ctrl</kbd> to toggle highlight on/off
+              <div className="confirmation-toggle-section">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={confirmationMode}
+                    onChange={(e) => setConfirmationMode(e.target.checked)}
+                  />
+                  <span style={{color: '#fff', fontSize: '0.85em'}}>Ask confirmation before replacing</span>
+                </label>
+                <div style={{fontSize: '0.75em', color: '#aaa', marginTop: '4px', fontStyle: 'italic'}}>
+                  When enabled: Click color 1 → Click color 2 → Popup shows confirmation
+                </div>
+              </div>
+              
+              {selectedPaletteColor && !confirmationMode && (
+                <div className="keyboard-hint">
+                  <div style={{fontSize: '0.8em', color: '#ffff00', fontStyle: 'italic', textAlign: 'center'}}>
+                    💡 Press <kbd>Ctrl</kbd> to toggle highlight on/off
+                  </div>
+                </div>
+              )}
+              
+              {selectedPaletteColor && confirmationMode && (
+                <div className="keyboard-hint" style={{background: 'rgba(0, 255, 0, 0.2)', borderColor: '#00ff00'}}>
+                  <div style={{fontSize: '0.8em', color: '#00ff00', fontStyle: 'italic', textAlign: 'center', fontWeight: 'bold'}}>
+                    ✓ 1st color selected! Now click 2nd palette color to replace it with
                   </div>
                 </div>
               )}
