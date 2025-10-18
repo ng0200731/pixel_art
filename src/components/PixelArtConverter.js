@@ -27,6 +27,7 @@ function PixelArtConverter() {
   const workCanvasRef = useRef(null);
   const originalCanvasRef = useRef(null);
   const fileInputRef = useRef(null);
+  const ctrlPressedRef = useRef(false);
   
   const [imageWidth, setImageWidth] = useState(0);
   const [imageHeight, setImageHeight] = useState(0);
@@ -82,30 +83,43 @@ function PixelArtConverter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paletteSize]);
 
-  // Alt key listener to toggle highlight
+  // Ctrl key listener to toggle highlight
   useEffect(() => {
-    let altPressed = false;
-
     const handleKeyDown = (e) => {
-      // Only trigger once per Alt key press
-      if (e.key === 'Alt' && !altPressed && selectedPaletteColor) {
-        altPressed = true;
+      // Only trigger once per Ctrl key press
+      if (e.key === 'Control' && !ctrlPressedRef.current) {
+        if (!selectedPaletteColor) return;
         
-        if (highlightedColor) {
-          // Turn off highlight
-          setHighlightedColor(null);
-          clearHighlight();
-        } else {
-          // Turn on highlight
-          setHighlightedColor(selectedPaletteColor);
-          highlightColorInImage(selectedPaletteColor);
-        }
+        e.preventDefault(); // Prevent browser shortcuts
+        ctrlPressedRef.current = true;
+        
+        // Use functional state update to get current value
+        setHighlightedColor(current => {
+          if (current) {
+            // Turn off highlight
+            const workCanvas = workCanvasRef.current;
+            if (workCanvas) {
+              if (showColorNumbers) {
+                drawColorNumbers();
+              } else {
+                setPixelatedImageSrc(workCanvas.toDataURL());
+              }
+            }
+            return null;
+          } else {
+            // Turn on highlight
+            if (selectedPaletteColor) {
+              highlightColorInImage(selectedPaletteColor);
+            }
+            return selectedPaletteColor;
+          }
+        });
       }
     };
 
     const handleKeyUp = (e) => {
-      if (e.key === 'Alt') {
-        altPressed = false;
+      if (e.key === 'Control') {
+        ctrlPressedRef.current = false;
       }
     };
 
@@ -116,7 +130,8 @@ function PixelArtConverter() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [selectedPaletteColor, highlightedColor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPaletteColor, showColorNumbers]);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -1448,7 +1463,7 @@ function PixelArtConverter() {
                     <span style={{color: '#fff', fontSize: '0.85em'}}>Ask confirmation before replacing</span>
                   </label>
                   <div style={{fontSize: '0.75em', color: '#aaa', marginTop: '4px', fontStyle: 'italic'}}>
-                    Press <kbd>Alt</kbd> to toggle highlight on/off
+                    Press <kbd>Ctrl</kbd> to toggle highlight on/off
                   </div>
                 </div>
               )}
