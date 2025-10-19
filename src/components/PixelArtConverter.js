@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v2.2.5';
+const VERSION = 'v2.2.8';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -1013,13 +1013,22 @@ function PixelArtConverter() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Calculate the position in the actual image (using naturalWidth/Height for accurate mapping)
-    const imgX = (x / rect.width) * elem.naturalWidth;
-    const imgY = (y / rect.height) * elem.naturalHeight;
+    // Account for object-fit: contain letterboxing inside the <img>
+    const naturalW = elem.naturalWidth;
+    const naturalH = elem.naturalHeight;
+    const scale = Math.min(rect.width / naturalW, rect.height / naturalH) || 1;
+    const displayedW = naturalW * scale;
+    const displayedH = naturalH * scale;
+    const offsetX = (rect.width - displayedW) / 2;
+    const offsetY = (rect.height - displayedH) / 2;
+
+    // Map cursor to image-space coordinates
+    const xInImage = (x - offsetX) / scale;
+    const yInImage = (y - offsetY) / scale;
 
     // Clamp to image bounds
-    const clampedImgX = Math.max(0, Math.min(elem.naturalWidth - 1, imgX));
-    const clampedImgY = Math.max(0, Math.min(elem.naturalHeight - 1, imgY));
+    const clampedImgX = Math.max(0, Math.min(naturalW - 1, xInImage));
+    const clampedImgY = Math.max(0, Math.min(naturalH - 1, yInImage));
 
     setMagnifierPos({ x: e.clientX, y: e.clientY });
     setMagnifierImagePos({ x: clampedImgX, y: clampedImgY });
@@ -1066,7 +1075,7 @@ function PixelArtConverter() {
       }
     }
 
-    // Update custom crosshair position
+    // Update custom crosshair position (use actual cursor position, not calculated image position)
     const crosshair = document.querySelector('.custom-crosshair');
     if (crosshair) {
       crosshair.style.left = `${e.clientX}px`;
@@ -1911,8 +1920,10 @@ function PixelArtConverter() {
                 className="magnifier-view"
                 style={{
                   backgroundImage: `url(${originalImageSrc})`,
-                  backgroundPosition: `-${magnifierImagePos.x * 4 - 150}px -${magnifierImagePos.y * 4 - 150}px`,
+                  // Center the hovered pixel under the crosshair (add 0.5 to target pixel center)
+                  backgroundPosition: `${150 - ((magnifierImagePos.x + 0.5) * 4)}px ${150 - ((magnifierImagePos.y + 0.5) * 4)}px`,
                   backgroundSize: `${imageWidth * 4}px ${imageHeight * 4}px`,
+                  backgroundRepeat: 'no-repeat',
                 }}
               >
                 <div className="magnifier-crosshair" />
@@ -1927,8 +1938,10 @@ function PixelArtConverter() {
                 className="magnifier-view pixelated"
                 style={{
                   backgroundImage: `url(${pixelatedImageSrc})`,
-                  backgroundPosition: `-${magnifierImagePos.x * 4 - 150}px -${magnifierImagePos.y * 4 - 150}px`,
+                  // Center the hovered pixel under the crosshair (add 0.5 to target pixel center)
+                  backgroundPosition: `${150 - ((magnifierImagePos.x + 0.5) * 4)}px ${150 - ((magnifierImagePos.y + 0.5) * 4)}px`,
                   backgroundSize: `${imageWidth * 4}px ${imageHeight * 4}px`,
+                  backgroundRepeat: 'no-repeat',
                 }}
               >
                 <div className="magnifier-crosshair" />
