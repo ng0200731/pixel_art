@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './PixelArtConverter.css';
 
-const VERSION = 'v1.5.0';
+const VERSION = 'v2.2.5';
 
 function PixelArtConverter() {
   const [loadedImage, setLoadedImage] = useState(null);
@@ -13,6 +13,7 @@ function PixelArtConverter() {
   const [rotationDegrees, setRotationDegrees] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uniqueColorCount, setUniqueColorCount] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // Control states
   const [blockSize, setBlockSize] = useState(1);
@@ -23,6 +24,11 @@ function PixelArtConverter() {
   const [gridLines, setGridLines] = useState(false);
   const [edges, setEdges] = useState(false);
   const [useDominantColor, setUseDominantColor] = useState(false);
+  
+  // Advanced sharpness controls
+  const [preSharpenStrength, setPreSharpenStrength] = useState(0);
+  const [edgeAwareBlocks, setEdgeAwareBlocks] = useState(false);
+  const [contrastBoost, setContrastBoost] = useState(1.0);
   
   const workCanvasRef = useRef(null);
   const originalCanvasRef = useRef(null);
@@ -65,7 +71,7 @@ function PixelArtConverter() {
       updatePixelArt();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blockSize, threshold, lineWidth, grayscale, gridLines, edges, useDominantColor]);
+  }, [blockSize, threshold, lineWidth, grayscale, gridLines, edges, useDominantColor, preSharpenStrength, edgeAwareBlocks, contrastBoost]);
 
   // Update pixel art when color palette changes
   useEffect(() => {
@@ -75,10 +81,15 @@ function PixelArtConverter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colorPalette]);
 
-  // Re-extract palette and process when palette size changes
+  // Re-extract palette and process when palette size changes (but not from Smart Combine)
+  const [skipPaletteReextract, setSkipPaletteReextract] = useState(false);
+  
   useEffect(() => {
-    if (loadedImage) {
+    if (loadedImage && !skipPaletteReextract) {
       processImage();
+    }
+    if (skipPaletteReextract) {
+      setSkipPaletteReextract(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paletteSize]);
@@ -162,15 +173,19 @@ function PixelArtConverter() {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
+        // Complete reset for new image
         setLoadedImage(img);
         setRotationDegrees(0);
-        // Reset all color replacement states for new image
         setReplacedColors(new Set());
         setSelectedPaletteColor(null);
         setColorPickerMode(false);
         setClickedColorInfo(null);
         setHighlightedColor(null);
         setConfirmationMode(false);
+        setColorPalette([]); // Clear old palette
+        setUniqueColorCount(0); // Reset count
+        setShowComparison(false); // Hide old comparison
+        setPixelatedImageSrc(''); // Clear old pixel art
       };
       img.src = event.target.result;
     };
@@ -235,13 +250,19 @@ function PixelArtConverter() {
     const uniqueColors = countUniqueColors(imageData.data);
     setUniqueColorCount(uniqueColors);
 
+    // Auto-set palette size to match unique colors (capped at 32)
+    const optimalPaletteSize = Math.min(uniqueColors, 32);
+    // Round to even number (2, 4, 6, 8, 10, etc.)
+    const roundedPaletteSize = Math.max(4, Math.ceil(optimalPaletteSize / 2) * 2);
+    setPaletteSize(roundedPaletteSize);
+
     // Update info
     setImageInfo(
       `Original: ${loadedImage.width}x${loadedImage.height}px | Rotated: ${width}x${height}px (Rotation: ${rotationDegrees}°) | Unique Colors: ${uniqueColors.toLocaleString()} | Pixel Art: ${width}x${height}px`
     );
 
-    // Extract color palette
-    extractPalette(imageData.data, paletteSize);
+    // Extract color palette with optimal size
+    extractPalette(imageData.data, roundedPaletteSize);
 
     // Show comparison section
     setShowComparison(true);
@@ -260,6 +281,33 @@ function PixelArtConverter() {
     const rgb = rgbString.match(/\d+/g).map(Number);
     // Calculate relative luminance
     return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]);
+  };
+
+  const rgbToHsl = (rgbString) => {
+    const rgb = rgbString.match(/\d+/g).map(Number);
+    const r = rgb[0] / 255;
+    const g = rgb[1] / 255;
+    const b = rgb[2] / 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+
+    if (max === min) {
+      h = s = 0; // achromatic (gray)
+    } else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      
+      switch (max) {
+        case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+        case g: h = ((b - r) / d + 2) / 6; break;
+        case b: h = ((r - g) / d + 4) / 6; break;
+        default: h = 0;
+      }
+    }
+
+    return { h: h * 360, s: s * 100, l: l * 100 };
   };
 
   const extractPalette = (data, numColors) => {
@@ -335,8 +383,29 @@ function PixelArtConverter() {
       `rgb(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])})`
     );
 
-    // Sort palette from lightest to darkest
-    palette.sort((a, b) => calculateLightness(b) - calculateLightness(a));
+    // Sort palette by HUE first (groups similar colors), then by lightness
+    palette.sort((a, b) => {
+      const hslA = rgbToHsl(a);
+      const hslB = rgbToHsl(b);
+      
+      // First sort by saturation (grays/blacks first, then colors)
+      if (hslA.s < 10 && hslB.s >= 10) return -1; // Gray/black comes first
+      if (hslA.s >= 10 && hslB.s < 10) return 1;
+      
+      // If both are grays, sort by lightness
+      if (hslA.s < 10 && hslB.s < 10) {
+        return hslB.l - hslA.l; // Lightest gray first
+      }
+      
+      // For colors, sort by HUE (groups reds, oranges, yellows, etc.)
+      const hueDiff = hslA.h - hslB.h;
+      if (Math.abs(hueDiff) > 15) {
+        return hueDiff; // Group by hue
+      }
+      
+      // Within same hue group, sort by lightness (light to dark)
+      return hslB.l - hslA.l;
+    });
 
     setColorPalette(palette);
   };
@@ -442,8 +511,14 @@ function PixelArtConverter() {
 
     workCtx.putImageData(imageData, 0, 0);
 
-    // Update palette and image
+    // Update palette size and palette (skip re-extraction)
+    setSkipPaletteReextract(true);
+    setPaletteSize(combinedPalette.length);
     setColorPalette(combinedPalette);
+    
+    // Save as new original
+    setOriginalPixelArt(workCanvas.toDataURL());
+    
     if (showColorNumbers) {
       drawColorNumbers();
     } else {
@@ -459,8 +534,99 @@ function PixelArtConverter() {
     );
   };
 
-  const updatePixelArt = () => {
+  const applyPreSharpening = (imageData) => {
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    
+    if (preSharpenStrength <= 0) return imageData;
+    
+    // Create sharpened copy
+    const sharpened = new Uint8ClampedArray(data.length);
+    
+    // Sharpening kernel: [[-1,-1,-1],[-1,9,-1],[-1,-1,-1]]
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        for (let c = 0; c < 3; c++) { // RGB channels
+          const idx = (y * width + x) * 4 + c;
+          
+          const center = data[idx];
+          const top = data[((y-1) * width + x) * 4 + c];
+          const bottom = data[((y+1) * width + x) * 4 + c];
+          const left = data[(y * width + (x-1)) * 4 + c];
+          const right = data[(y * width + (x+1)) * 4 + c];
+          const tl = data[((y-1) * width + (x-1)) * 4 + c];
+          const tr = data[((y-1) * width + (x+1)) * 4 + c];
+          const bl = data[((y+1) * width + (x-1)) * 4 + c];
+          const br = data[((y+1) * width + (x+1)) * 4 + c];
+          
+          // Apply kernel
+          const sharp = 9 * center - (top + bottom + left + right + tl + tr + bl + br);
+          
+          // Blend with original using strength
+          const result = data[idx] + preSharpenStrength * (sharp - data[idx]);
+          sharpened[idx] = Math.max(0, Math.min(255, result));
+        }
+        sharpened[(y * width + x) * 4 + 3] = 255; // Alpha
+      }
+    }
+    
+    // Copy edges without sharpening
+    for (let x = 0; x < width; x++) {
+      for (let c = 0; c < 4; c++) {
+        sharpened[x * 4 + c] = data[x * 4 + c]; // Top row
+        sharpened[((height-1) * width + x) * 4 + c] = data[((height-1) * width + x) * 4 + c]; // Bottom row
+      }
+    }
+    for (let y = 0; y < height; y++) {
+      for (let c = 0; c < 4; c++) {
+        sharpened[(y * width) * 4 + c] = data[(y * width) * 4 + c]; // Left column
+        sharpened[(y * width + (width-1)) * 4 + c] = data[(y * width + (width-1)) * 4 + c]; // Right column
+      }
+    }
+    
+    const sharpenedImageData = new ImageData(sharpened, width, height);
+    return sharpenedImageData;
+  };
+
+  const createEdgeMap = (imageData) => {
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
+    const edgeMap = new Uint8Array(width * height);
+    
+    // Sobel edge detection
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const getGray = (dx, dy) => {
+          const i = ((y + dy) * width + (x + dx)) * 4;
+          return (data[i] + data[i + 1] + data[i + 2]) / 3;
+        };
+        
+        const gx =
+          -1 * getGray(-1, -1) + 1 * getGray(1, -1) +
+          -2 * getGray(-1, 0) + 2 * getGray(1, 0) +
+          -1 * getGray(-1, 1) + 1 * getGray(1, 1);
+        
+        const gy =
+          -1 * getGray(-1, -1) - 2 * getGray(0, -1) - 1 * getGray(1, -1) +
+          1 * getGray(-1, 1) + 2 * getGray(0, 1) + 1 * getGray(1, 1);
+        
+        const magnitude = Math.sqrt(gx * gx + gy * gy);
+        edgeMap[y * width + x] = magnitude > threshold ? 1 : 0;
+      }
+    }
+    
+    return edgeMap;
+  };
+
+  const updatePixelArt = async () => {
     if (!loadedImage || colorPalette.length === 0) return;
+
+    setIsProcessing(true);
+    
+    // Use setTimeout to allow UI to update with loading state
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     const workCanvas = workCanvasRef.current;
     const originalCanvas = originalCanvasRef.current;
@@ -474,8 +640,15 @@ function PixelArtConverter() {
     workCtx.imageSmoothingEnabled = false;
     workCtx.drawImage(originalCanvas, 0, 0, imageWidth, imageHeight);
 
-    const imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+    let imageData = workCtx.getImageData(0, 0, imageWidth, imageHeight);
+    
+    // STEP 1: Apply pre-sharpening
+    imageData = applyPreSharpening(imageData);
+    
     const data = imageData.data;
+    
+    // STEP 2: Create edge map for edge-aware processing
+    const edgeMap = edgeAwareBlocks ? createEdgeMap(imageData) : null;
 
     // Apply pixelation
     const numBlocksX = Math.ceil(imageWidth / blockSize);
@@ -489,20 +662,46 @@ function PixelArtConverter() {
         const endY = Math.min(startY + blockSize, imageHeight);
 
         let nr, ng, nb;
-
-        if (useDominantColor) {
-          // OPTION 1: Use dominant (most common) color in block instead of average
-          const colorCounts = new Map();
-          
-          for (let y = startY; y < endY; y++) {
-            for (let x = startX; x < endX; x++) {
-              const idx = (y * imageWidth + x) * 4;
-              const colorKey = `${data[idx]},${data[idx + 1]},${data[idx + 2]}`;
-              colorCounts.set(colorKey, (colorCounts.get(colorKey) || 0) + 1);
+        
+        // Collect pixels for this block
+        const blockPixels = [];
+        const nonEdgePixels = [];
+        let hasEdge = false;
+        
+        for (let y = startY; y < endY; y++) {
+          for (let x = startX; x < endX; x++) {
+            const idx = (y * imageWidth + x) * 4;
+            const pixel = [data[idx], data[idx + 1], data[idx + 2]];
+            blockPixels.push(pixel);
+            
+            // Check if this pixel is on an edge
+            if (edgeMap && edgeMap[y * imageWidth + x] === 1) {
+              hasEdge = true;
+            } else {
+              nonEdgePixels.push(pixel);
             }
           }
+        }
+        
+        // EDGE-AWARE: If block has edges, use only non-edge pixels
+        const pixelsToUse = (edgeAwareBlocks && hasEdge && nonEdgePixels.length > 0) 
+          ? nonEdgePixels 
+          : blockPixels;
+
+        if (useDominantColor) {
+          // IMPROVED DOMINANT COLOR: Quantize first, then find mode
+          const colorCounts = new Map();
           
-          // Find most common color
+          pixelsToUse.forEach(pixel => {
+            // Quantize to reduce noise (round to nearest 16)
+            const quantR = Math.round(pixel[0] / 16) * 16;
+            const quantG = Math.round(pixel[1] / 16) * 16;
+            const quantB = Math.round(pixel[2] / 16) * 16;
+            const colorKey = `${quantR},${quantG},${quantB}`;
+            colorCounts.set(colorKey, (colorCounts.get(colorKey) || 0) + 1);
+          });
+          
+          // Find most common quantized color
           let maxCount = 0;
           let dominantColor = [0, 0, 0];
           colorCounts.forEach((count, colorKey) => {
@@ -512,25 +711,22 @@ function PixelArtConverter() {
             }
           });
           
-          // Find nearest palette color to dominant color
+          // Find nearest palette color
           const nearest = findNearestPaletteColor(dominantColor);
           [nr, ng, nb] = nearest;
         } else {
-          // DEFAULT: Calculate average color in block
-          let rSum = 0, gSum = 0, bSum = 0, count = 0;
-          for (let y = startY; y < endY; y++) {
-            for (let x = startX; x < endX; x++) {
-              const idx = (y * imageWidth + x) * 4;
-              rSum += data[idx];
-              gSum += data[idx + 1];
-              bSum += data[idx + 2];
-              count++;
-            }
-          }
+          // AVERAGE COLOR (edge-aware)
+          let rSum = 0, gSum = 0, bSum = 0;
+          
+          pixelsToUse.forEach(pixel => {
+            rSum += pixel[0];
+            gSum += pixel[1];
+            bSum += pixel[2];
+          });
 
-          const avgR = rSum / count;
-          const avgG = gSum / count;
-          const avgB = bSum / count;
+          const avgR = rSum / pixelsToUse.length;
+          const avgG = gSum / pixelsToUse.length;
+          const avgB = bSum / pixelsToUse.length;
 
           // Find nearest palette color
           const nearest = findNearestPaletteColor([avgR, avgG, avgB]);
@@ -555,9 +751,14 @@ function PixelArtConverter() {
       }
     }
 
+    // STEP 4: Apply contrast boost
+    if (contrastBoost > 1.0) {
+      applyContrastBoost(imageData, contrastBoost);
+    }
+    
     workCtx.putImageData(imageData, 0, 0);
 
-    // Apply edge detection
+    // Apply edge detection overlay (optional visual effect)
     if (edges) {
       applyEdgeDetection(workCtx, imageWidth, imageHeight, threshold);
     }
@@ -587,6 +788,8 @@ function PixelArtConverter() {
 
     // Update display
     setPixelatedImageSrc(workCanvas.toDataURL());
+    
+    setIsProcessing(false);
   };
 
   const drawColorNumbers = () => {
@@ -687,6 +890,39 @@ function PixelArtConverter() {
     return nearest;
   };
 
+  const applyContrastBoost = (imageData, boost) => {
+    const data = imageData.data;
+    
+    // Find min and max for each channel
+    let minR = 255, maxR = 0, minG = 255, maxG = 0, minB = 255, maxB = 0;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      minR = Math.min(minR, data[i]);
+      maxR = Math.max(maxR, data[i]);
+      minG = Math.min(minG, data[i + 1]);
+      maxG = Math.max(maxG, data[i + 1]);
+      minB = Math.min(minB, data[i + 2]);
+      maxB = Math.max(maxB, data[i + 2]);
+    }
+    
+    // Apply contrast stretch with boost
+    for (let i = 0; i < data.length; i += 4) {
+      // Normalize to 0-1, apply boost, stretch back
+      const r = (data[i] - minR) / (maxR - minR || 1);
+      const g = (data[i + 1] - minG) / (maxG - minG || 1);
+      const b = (data[i + 2] - minB) / (maxB - minB || 1);
+      
+      // Apply power function for contrast boost
+      const boostedR = Math.pow(r, 1 / boost);
+      const boostedG = Math.pow(g, 1 / boost);
+      const boostedB = Math.pow(b, 1 / boost);
+      
+      data[i] = Math.round(boostedR * 255);
+      data[i + 1] = Math.round(boostedG * 255);
+      data[i + 2] = Math.round(boostedB * 255);
+    }
+  };
+
   const applyEdgeDetection = (ctx, width, height, thresh) => {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
@@ -742,6 +978,7 @@ function PixelArtConverter() {
   };
 
   const handleReset = () => {
+    // Complete reset - clear everything
     setShowComparison(false);
     setLoadedImage(null);
     setRotationDegrees(0);
@@ -751,6 +988,10 @@ function PixelArtConverter() {
     setClickedColorInfo(null);
     setHighlightedColor(null);
     setConfirmationMode(false);
+    setColorPalette([]);
+    setUniqueColorCount(0);
+    setPixelatedImageSrc('');
+    setOriginalImageSrc('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -772,19 +1013,23 @@ function PixelArtConverter() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Calculate the position in the actual image
+    // Calculate the position in the actual image (using naturalWidth/Height for accurate mapping)
     const imgX = (x / rect.width) * elem.naturalWidth;
     const imgY = (y / rect.height) * elem.naturalHeight;
 
+    // Clamp to image bounds
+    const clampedImgX = Math.max(0, Math.min(elem.naturalWidth - 1, imgX));
+    const clampedImgY = Math.max(0, Math.min(elem.naturalHeight - 1, imgY));
+
     setMagnifierPos({ x: e.clientX, y: e.clientY });
-    setMagnifierImagePos({ x: imgX, y: imgY });
+    setMagnifierImagePos({ x: clampedImgX, y: clampedImgY });
 
     // Get color from original image and find palette match
     const originalCanvas = originalCanvasRef.current;
     if (originalCanvas && colorPalette.length > 0) {
       const originalCtx = originalCanvas.getContext('2d');
-      const px = Math.floor(imgX);
-      const py = Math.floor(imgY);
+      const px = Math.floor(clampedImgX);
+      const py = Math.floor(clampedImgY);
       if (px >= 0 && px < imageWidth && py >= 0 && py < imageHeight) {
         const imageData = originalCtx.getImageData(px, py, 1, 1);
         const data = imageData.data;
@@ -804,8 +1049,8 @@ function PixelArtConverter() {
     const workCanvas = workCanvasRef.current;
     if (workCanvas && colorPalette.length > 0) {
       const workCtx = workCanvas.getContext('2d');
-      const px = Math.floor(imgX);
-      const py = Math.floor(imgY);
+      const px = Math.floor(clampedImgX);
+      const py = Math.floor(clampedImgY);
       if (px >= 0 && px < imageWidth && py >= 0 && py < imageHeight) {
         const imageData = workCtx.getImageData(px, py, 1, 1);
         const data = imageData.data;
@@ -1208,16 +1453,25 @@ function PixelArtConverter() {
                 <div className="placeholder-text">Pixel art will appear here</div>
               </div>
             ) : (
-              <img 
-                ref={pixelImgRef}
-                src={pixelatedImageSrc} 
-                alt="Pixel art" 
-                className="full-image pixelated"
-                onMouseEnter={handleMouseEnter}
-                onMouseMove={(e) => handleMouseMove(e, pixelImgRef)}
-                onMouseLeave={handleMouseLeave}
-                onClick={handlePixelArtClick}
-              />
+              <>
+                {isProcessing && (
+                  <div className="processing-overlay">
+                    <div className="spinner"></div>
+                    <div className="processing-text">Processing...</div>
+                  </div>
+                )}
+                <img 
+                  ref={pixelImgRef}
+                  src={pixelatedImageSrc} 
+                  alt="Pixel art" 
+                  className="full-image pixelated"
+                  onMouseEnter={handleMouseEnter}
+                  onMouseMove={(e) => handleMouseMove(e, pixelImgRef)}
+                  onMouseLeave={handleMouseLeave}
+                  onClick={handlePixelArtClick}
+                  style={{ opacity: isProcessing ? 0.5 : 1 }}
+                />
+              </>
             )}
           </div>
         </div>
@@ -1245,7 +1499,65 @@ function PixelArtConverter() {
 
               <div className="controls">
             <div className="solution-options">
-              <div className="solution-header">🎯 Gray Edge Solutions:</div>
+              <div className="solution-header">🔧 Advanced Sharpness</div>
+              
+              <div className="control-group">
+                <label>Pre-Sharpen: <span>{preSharpenStrength.toFixed(1)}</span>x</label>
+                <div className="button-stepper">
+                  <button 
+                    className="stepper-btn"
+                    onClick={() => setPreSharpenStrength(prev => Math.max(0, prev - 0.1))}
+                    disabled={isProcessing || preSharpenStrength <= 0}
+                  >
+                    ▼
+                  </button>
+                  <button 
+                    className="stepper-btn"
+                    onClick={() => setPreSharpenStrength(prev => Math.min(3, prev + 0.1))}
+                    disabled={isProcessing || preSharpenStrength >= 3}
+                  >
+                    ▲
+                  </button>
+                </div>
+                <div className="solution-desc">Sharpen before pixelation (reduces gray edges)</div>
+              </div>
+              
+              <div className="solution-item">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={edgeAwareBlocks}
+                    onChange={(e) => setEdgeAwareBlocks(e.target.checked)}
+                  />
+                  <span className="solution-label">Edge-Aware Blocks</span>
+                </label>
+                <div className="solution-desc">Exclude edge pixels from averaging (prevents color mixing)</div>
+              </div>
+              
+              <div className="control-group">
+                <label>Contrast Boost: <span>{contrastBoost.toFixed(1)}</span>x</label>
+                <div className="button-stepper">
+                  <button 
+                    className="stepper-btn"
+                    onClick={() => setContrastBoost(prev => Math.max(1, prev - 0.1))}
+                    disabled={isProcessing || contrastBoost <= 1}
+                  >
+                    ▼
+                  </button>
+                  <button 
+                    className="stepper-btn"
+                    onClick={() => setContrastBoost(prev => Math.min(2, prev + 0.1))}
+                    disabled={isProcessing || contrastBoost >= 2}
+                  >
+                    ▲
+                  </button>
+                </div>
+                <div className="solution-desc">Enhance color vibrancy (makes colors pop)</div>
+              </div>
+            </div>
+
+            <div className="solution-options" style={{marginTop: '12px'}}>
+              <div className="solution-header">🎯 Gray Edge Solutions</div>
               
               <div className="solution-item">
                 <label className="checkbox-label">
